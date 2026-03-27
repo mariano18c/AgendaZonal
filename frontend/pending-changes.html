@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificar Cambios - Agenda de la zona</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-4 py-8">
+    <div class="mb-6">
+      <a href="/pending" class="text-blue-600 hover:underline">← Volver a pendientes</a>
+    </div>
+
+    <div id="loginRequired" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+      <p class="text-yellow-800 mb-4">Necesitás iniciar sesión para verificar cambios</p>
+      <a href="/login" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Iniciar sesión</a>
+    </div>
+
+    <div id="content" class="hidden">
+      <div id="loadingMsg" class="text-center text-gray-500 py-10">Cargando cambios...</div>
+      
+      <div id="contactInfo" class="bg-white rounded-lg shadow-sm border p-6 mb-6"></div>
+
+      <h2 class="text-xl font-semibold text-gray-800 mb-4">Cambios pendientes</h2>
+      
+      <div id="changesList" class="space-y-4"></div>
+      
+      <div id="noChanges" class="hidden text-center text-gray-500 py-10">
+        No hay cambios pendientes
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const FIELD_LABELS = {
+      name: 'Nombre',
+      phone: 'Teléfono',
+      email: 'Email',
+      address: 'Dirección',
+      city: 'Ciudad',
+      neighborhood: 'Barrio',
+      category_id: 'Categoría',
+      description: 'Descripción',
+      schedule: 'Horario',
+      website: 'Sitio web',
+      photo_path: 'Imagen',
+      latitude: 'Latitud',
+      longitude: 'Longitud',
+      maps_url: 'Google Maps',
+    };
+
+    let contact = null;
+
+    async function loadChanges() {
+      if (!isLoggedIn()) {
+        document.getElementById('loginRequired').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('content').classList.remove('hidden');
+
+      const params = new URLSearchParams(window.location.search);
+      const contactId = params.get('id');
+
+      if (!contactId) {
+        document.getElementById('loadingMsg').innerHTML = '<p class="text-red-500">No se especificó un contacto</p>';
+        return;
+      }
+
+      try {
+        contact = await getContact(contactId);
+        renderContactInfo(contact);
+
+        const changes = await getContactChanges(contactId);
+        document.getElementById('loadingMsg').classList.add('hidden');
+
+        if (changes.length === 0) {
+          document.getElementById('noChanges').classList.remove('hidden');
+          return;
+        }
+
+        renderChanges(changes);
+      } catch (err) {
+        document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
+      }
+    }
+
+    function renderContactInfo(contact) {
+      const div = document.getElementById('contactInfo');
+      const safeName = escapeHtml(contact.name);
+      const safePhone = escapeHtml(contact.phone);
+      const safeCity = escapeHtml(contact.city);
+      div.innerHTML = `
+        <h2 class="text-2xl font-bold text-gray-800">${safeName}</h2>
+        <p class="text-blue-600 mt-1">${safePhone}</p>
+        ${safeCity ? `<p class="text-gray-500">${safeCity}</p>` : ''}
+      `;
+    }
+
+    function renderChanges(changes) {
+      const list = document.getElementById('changesList');
+      const user = getUser();
+      
+      list.innerHTML = changes.map(change => {
+        const fieldLabel = FIELD_LABELS[change.field_name] || change.field_name;
+        const canDelete = user && change.user_id === user.id;
+        const safeOld = escapeHtml(change.old_value) || '(vacio)';
+        const safeNew = escapeHtml(change.new_value);
+
+        return `
+          <div class="bg-white rounded-lg shadow-sm border p-4">
+            <div class="flex justify-between items-start mb-3">
+              <span class="font-medium text-gray-800">${fieldLabel}</span>
+              ${canDelete ? `<button onclick="deleteChange(${change.id})" class="text-red-600 text-sm hover:underline">Eliminar</button>` : ''}
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Valor actual</p>
+                <p class="text-gray-600">${safeOld}</p>
+              </div>
+              <div>
+                <p class="text-xs text-gray-500 mb-1">Valor propuesto</p>
+                <p class="text-green-600 font-medium">${safeNew}</p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="verifyChange(${change.id})" 
+                class="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">
+                ✓ Verificar
+              </button>
+              <button onclick="rejectChange(${change.id})" 
+                class="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition">
+                ✗ Rechazar
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function verifyChange(changeId) {
+      try {
+        await verifyContactChange(contact.id, changeId);
+        showAlert('Cambio verificado', 'success');
+        loadChanges();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function rejectChange(changeId) {
+      try {
+        await rejectContactChange(contact.id, changeId);
+        showAlert('Cambio rechazado', 'success');
+        loadChanges();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function deleteChange(changeId) {
+      if (!confirm('¿Estás seguro de eliminar este cambio?')) return;
+      
+      try {
+        await deleteContactChange(contact.id, changeId);
+        showAlert('Cambio eliminado', 'success');
+        loadChanges();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    loadChanges();
+  </script>
+</body>
+</html>

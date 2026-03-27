@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agregar Contacto - Agenda de la zona</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+
+  <main class="max-w-lg mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">Agregar Contacto</h1>
+
+    <div id="loginRequired" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+      <p class="text-yellow-800 mb-4">Necesitás iniciar sesión para agregar contactos</p>
+      <a href="/login" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Iniciar sesión</a>
+    </div>
+
+    <form id="contactForm" class="hidden bg-white rounded-lg shadow-sm border p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+        <input type="text" id="name" required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Ej: Juan Perez - Plomero">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono *</label>
+        <input type="text" id="phone" required
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Ej: 341-1234567">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+        <select id="category" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          <option value="">Seleccionar categoría</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Horario</label>
+        <input type="text" id="schedule"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Ej: Lun-Vie 8:00-18:00">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input type="email" id="email"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="correo@ejemplo.com">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Sitio web</label>
+        <input type="url" id="website"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="https://ejemplo.com">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+        <input type="text" id="address"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Calle y número">
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
+          <input type="text" id="city"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Ibarlucea">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Barrio</label>
+          <input type="text" id="neighborhood"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">URL de Google Maps</label>
+        <input type="url" id="maps_url"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="https://maps.google.com/...">
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Latitud</label>
+          <input type="number" step="any" id="latitude"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="-32.9575">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Longitud</label>
+          <input type="number" step="any" id="longitude"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="-60.6391">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Imagen</label>
+        <input type="file" id="photo" accept="image/jpeg"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        <p class="text-xs text-gray-500 mt-1">Solo archivos JPG, máximo 1024x1024 píxeles</p>
+        <div id="photoPreview" class="hidden mt-2">
+          <img id="previewImage" class="w-32 h-32 object-cover rounded-lg border">
+          <button type="button" onclick="removePhoto()" class="text-red-600 text-sm hover:underline mt-1">Eliminar imagen</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+        <textarea id="description" rows="3"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Información adicional sobre el servicio..."></textarea>
+      </div>
+
+      <div id="errorMsg" class="hidden text-red-600 text-sm"></div>
+
+      <button type="submit"
+        class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium">
+        Guardar Contacto
+      </button>
+    </form>
+
+    <div id="successMsg" class="hidden bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+      <p class="text-green-800 mb-4">✅ Contacto guardado exitosamente</p>
+      <div class="flex gap-3 justify-center">
+        <button onclick="resetForm()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar otro</button>
+        <a href="/" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">Ir al inicio</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let selectedPhoto = null;
+
+    async function loadCategories() {
+      try {
+        const categories = await getCategories();
+        const select = document.getElementById('category');
+        categories.forEach(cat => {
+          const option = document.createElement('option');
+          option.value = cat.id;
+          option.textContent = `${getCategoryEmoji(cat.code)} ${cat.name}`;
+          select.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Error loading categories:', err);
+      }
+    }
+
+    function getCategoryEmoji(code) {
+      const emojis = {
+        100: '🔧', 101: '🔥', 102: '⚡', 103: '✂️', 104: '🧱',
+        105: '🖌️', 106: '🪚', 107: '🛒', 108: '🥩', 109: '🥬',
+        110: '🥖', 111: '👕', 112: '💊', 113: '📚', 114: '🍺',
+        115: '🍽️', 116: '🎶', 117: '🎁', 118: '🐾', 119: '🔩',
+        120: '🏪', 121: '🧸', 122: '📦', 123: '❤️', 124: '🏠',
+        999: '📌'
+      };
+      return emojis[code] || '📌';
+    }
+
+    function handlePhotoSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        if (!file.type.includes('jpeg')) {
+          showAlert('Solo se permiten archivos JPG', 'error');
+          event.target.value = '';
+          return;
+        }
+        selectedPhoto = file;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('previewImage').src = e.target.result;
+          document.getElementById('photoPreview').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function removePhoto() {
+      selectedPhoto = null;
+      document.getElementById('photo').value = '';
+      document.getElementById('photoPreview').classList.add('hidden');
+    }
+
+    function resetForm() {
+      document.getElementById('contactForm').reset();
+      document.getElementById('successMsg').classList.add('hidden');
+      document.getElementById('contactForm').classList.remove('hidden');
+      document.getElementById('errorMsg').classList.add('hidden');
+      removePhoto();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!isLoggedIn()) {
+        document.getElementById('loginRequired').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('contactForm').classList.remove('hidden');
+      loadCategories();
+      document.getElementById('photo').addEventListener('change', handlePhotoSelect);
+    });
+
+    document.getElementById('contactForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const data = {
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim() || null,
+        address: document.getElementById('address').value.trim() || null,
+        city: document.getElementById('city').value.trim() || null,
+        neighborhood: document.getElementById('neighborhood').value.trim() || null,
+        description: document.getElementById('description').value.trim() || null,
+        schedule: document.getElementById('schedule').value.trim() || null,
+        website: document.getElementById('website').value.trim() || null,
+        maps_url: document.getElementById('maps_url').value.trim() || null,
+      };
+
+      const categoryId = document.getElementById('category').value;
+      if (categoryId) {
+        data.category_id = parseInt(categoryId);
+      }
+
+      const lat = document.getElementById('latitude').value;
+      if (lat) {
+        data.latitude = parseFloat(lat);
+      }
+
+      const lng = document.getElementById('longitude').value;
+      if (lng) {
+        data.longitude = parseFloat(lng);
+      }
+
+      try {
+        const contact = await createContact(data);
+        
+        // Upload photo if selected
+        if (selectedPhoto) {
+          await uploadContactImage(contact.id, selectedPhoto);
+        }
+        
+        document.getElementById('contactForm').classList.add('hidden');
+        document.getElementById('successMsg').classList.remove('hidden');
+        document.getElementById('errorMsg').classList.add('hidden');
+      } catch (err) {
+        document.getElementById('errorMsg').textContent = err.message;
+        document.getElementById('errorMsg').classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
