@@ -1,10 +1,15 @@
-"""Security tests: SQL injection, XSS, path traversal, auth bypass, input validation."""
+"""Security tests: SQL injection, XSS, path traversal, auth bypass, input validation.
+
+Expanded with:
+- Additional fuzzing payloads
+- Token with deactivated user
+- Protected fields verification
+- Error message safety
+"""
 import pytest
+import io
 
 
-# ---------------------------------------------------------------------------
-# SQL Injection
-# ---------------------------------------------------------------------------
 class TestSQLInjection:
 
     @pytest.mark.security
@@ -36,25 +41,33 @@ class TestSQLInjection:
             "phone_number": "1234567",
             "password": "password123",
         })
-        # Should either register (sanitized) or fail validation, but not crash
         assert resp.status_code in [201, 400, 422]
 
     @pytest.mark.security
     def test_contact_id_sql_injection(self, client):
-        """Numeric path params should not accept SQL payloads."""
         resp = client.get("/api/contacts/1%20OR%201=1")
         assert resp.status_code in [404, 422]
 
     @pytest.mark.security
     def test_category_filter_sql_injection(self, client):
         resp = client.get("/api/contacts?category_id=1%20OR%201=1")
-        # Should reject non-integer or return empty
         assert resp.status_code in [200, 422]
 
+    @pytest.mark.security
+    def test_like_wildcard_injection_in_search(self, client, auth_headers):
+        """Ensure % and _ in search queries don't cause unexpected results."""
+        h = auth_headers(username="likeuser", email="like@test.com")
+        client.post("/api/contacts", headers=h, json={
+            "name": "ExactMatch", "phone": "1234567",
+        })
 
-# ---------------------------------------------------------------------------
-# XSS Prevention
-# ---------------------------------------------------------------------------
+        resp = client.get("/api/contacts/search?q=%25")
+        assert resp.status_code == 200
+
+        resp = client.get("/api/contacts/search?q=_%")
+        assert resp.status_code == 200
+
+
 class TestXSSPrevention:
 
     @pytest.mark.security
@@ -66,7 +79,9 @@ class TestXSSPrevention:
             "phone": "1234567",
         })
         assert resp.status_code == 201
-        assert resp.json()["name"] == xss
+        # Sanitized: HTML entities escaped
+        assert "<script>" not in resp.json()["name"]
+        assert "&lt;script&gt;" in resp.json()["name"]
 
     @pytest.mark.security
     def test_script_in_description(self, client, auth_headers):
@@ -88,13 +103,9 @@ class TestXSSPrevention:
             "phone_number": "1234567",
             "password": "password123",
         })
-        # Pydantic may reject special chars; API shouldn't crash
         assert resp.status_code in [201, 400, 422]
 
 
-# ---------------------------------------------------------------------------
-# Path Traversal
-# ---------------------------------------------------------------------------
 class TestPathTraversal:
 
     @pytest.mark.security
@@ -113,9 +124,6 @@ class TestPathTraversal:
         assert resp.status_code in [403, 404]
 
 
-# ---------------------------------------------------------------------------
-# Authentication / Authorization bypass
-# ---------------------------------------------------------------------------
 class TestAuthBypass:
 
     @pytest.mark.security
@@ -136,13 +144,10 @@ class TestAuthBypass:
         assert resp.status_code == 401
 
     @pytest.mark.security
-    def test_user_cannot_access_admin_endpoints(self, client, auth_headers):
+    def test_user_cannot_access_admin_endpoints(self, client, admin_headers, auth_headers):
         """A non-admin user cannot list users."""
-        # First user is admin
-        admin_headers = auth_headers(username="secrealadmin", email="secreal@test.com")
-        # Second user is regular
+        # admin_headers is from the first registered user (admin)
         h_user = auth_headers(username="secnormal", email="secnorm@test.com")
-
         resp = client.get("/api/users", headers=h_user)
         assert resp.status_code == 403
 
@@ -161,7 +166,6 @@ class TestAuthBypass:
 
     @pytest.mark.security
     def test_mod_can_verify_contact(self, client, auth_headers, moderator_user, contact_factory):
-        """Moderator can verify any contact."""
         h_owner = auth_headers(username="modverowner", email="modver@test.com")
         mod_user, h_mod = moderator_user
 
@@ -175,10 +179,25 @@ class TestAuthBypass:
         assert resp.status_code == 200
         assert resp.json()["is_verified"] is True
 
+    @pytest.mark.security
+    def test_deactivated_user_token_rejected(self, client, create_user, database_session):
+        """A token from a user that was later deactivated should be rejected."""
+        user = create_user(username="deactoken", email="deact@test.com")
+        database_session.commit()
 
-# ---------------------------------------------------------------------------
-# Input Validation / Boundary
-# ---------------------------------------------------------------------------
+        # Generate token directly (login would fail with default hash)
+        from app.auth import create_token
+        token = create_token(user.id)
+
+        # Deactivate the user
+        user.is_active = False
+        database_session.commit()
+
+        resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401
+        assert "inactivo" in resp.json()["detail"].lower()
+
+
 class TestInputValidation:
 
     @pytest.mark.security
@@ -247,14 +266,10 @@ class TestInputValidation:
         assert resp.status_code == 422
 
 
-# ---------------------------------------------------------------------------
-# Error message safety
-# ---------------------------------------------------------------------------
 class TestErrorMessages:
 
     @pytest.mark.security
     def test_login_error_no_user_enumeration(self, client):
-        """Error message should be generic, not revealing if user exists."""
         resp = client.post("/api/auth/login", json={
             "username_or_email": "nonexistent@test.com",
             "password": "wrong",
@@ -286,9 +301,6 @@ class TestErrorMessages:
         assert "role" not in detail or "permisos" in detail
 
 
-# ---------------------------------------------------------------------------
-# Protected fields
-# ---------------------------------------------------------------------------
 class TestProtectedFields:
 
     @pytest.mark.security

@@ -13,17 +13,18 @@ class TestImageUpload:
         return buf
 
     @pytest.fixture
-    def contact_id(self, client, auth_headers):
+    def image_setup(self, client, auth_headers):
+        """Create user and contact, return (headers, contact_id)."""
         headers = auth_headers(username="imguser", email="img@test.com")
         resp = client.post("/api/contacts", headers=headers, json={
             "name": "Con Imagen",
             "phone": "1234567",
         })
-        return resp.json()["id"]
+        return headers, resp.json()["id"]
 
     @pytest.mark.integration
-    def test_upload_imagen_valida(self, client, auth_headers, contact_id):
-        headers = auth_headers(username="imguser", email="img@test.com")
+    def test_upload_imagen_valida(self, client, image_setup):
+        headers, contact_id = image_setup
         jpeg = self._create_jpeg_bytes()
 
         resp = client.post(
@@ -35,8 +36,8 @@ class TestImageUpload:
         assert resp.json()["photo_path"] is not None
 
     @pytest.mark.integration
-    def test_upload_archivo_no_jpeg(self, client, auth_headers, contact_id):
-        headers = auth_headers(username="imguser", email="img@test.com")
+    def test_upload_archivo_no_jpeg(self, client, image_setup):
+        headers, contact_id = image_setup
         png_buf = io.BytesIO()
         Image.new("RGB", (100, 100)).save(png_buf, format="PNG")
         png_buf.seek(0)
@@ -49,7 +50,10 @@ class TestImageUpload:
         assert resp.status_code == 400
 
     @pytest.mark.integration
-    def test_upload_sin_autenticacion(self, client, contact_id):
+    def test_upload_sin_autenticacion(self, client, image_setup):
+        _, contact_id = image_setup
+        # Clear cookies to ensure no auth is sent
+        client.cookies.clear()
         jpeg = self._create_jpeg_bytes()
         resp = client.post(
             f"/api/contacts/{contact_id}/image",
@@ -58,8 +62,8 @@ class TestImageUpload:
         assert resp.status_code == 401
 
     @pytest.mark.integration
-    def test_eliminar_imagen(self, client, auth_headers, contact_id):
-        headers = auth_headers(username="imguser", email="img@test.com")
+    def test_eliminar_imagen(self, client, image_setup):
+        headers, contact_id = image_setup
         jpeg = self._create_jpeg_bytes()
 
         client.post(

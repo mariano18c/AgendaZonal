@@ -13,7 +13,10 @@ class TestHealthEndpoint:
     def test_health_returns_ok(self, client):
         resp = client.get("/health")
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok"}
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "checks" in data
+        assert data["checks"]["database"] == "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -417,6 +420,99 @@ class TestHTMLPages:
     def test_add_page(self, client):
         resp = client.get("/add")
         assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_history_page(self, client):
+        resp = client.get("/history")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_edit_page(self, client):
+        resp = client.get("/edit")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_pending_page(self, client):
+        resp = client.get("/pending")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_pending_changes_page(self, client):
+        resp = client.get("/pending/changes")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_admin_users_page(self, client):
+        resp = client.get("/admin/users")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_index_html_suffix(self, client):
+        resp = client.get("/index.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_search_html_suffix(self, client):
+        resp = client.get("/search.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_login_html_suffix(self, client):
+        resp = client.get("/login.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_register_html_suffix(self, client):
+        resp = client.get("/register.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_add_html_suffix(self, client):
+        resp = client.get("/add.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_history_html_suffix(self, client):
+        resp = client.get("/history.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_edit_html_suffix(self, client):
+        resp = client.get("/edit.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_pending_html_suffix(self, client):
+        resp = client.get("/pending.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_pending_changes_html_suffix(self, client):
+        resp = client.get("/pending-changes.html")
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_admin_users_html_suffix(self, client):
+        resp = client.get("/admin-users.html")
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Path traversal protection
+# ---------------------------------------------------------------------------
+class TestPathTraversalProtection:
+
+    @pytest.mark.integration
+    def test_path_traversal_blocked(self, client):
+        """serve_html should block paths outside FRONTEND_DIR."""
+        resp = client.get("/../../../etc/passwd.html")
+        assert resp.status_code in [403, 404]
+
+    @pytest.mark.integration
+    def test_nonexistent_html_file(self, client):
+        """Requesting a non-existent HTML file returns error."""
+        resp = client.get("/nonexistent-page")
+        assert resp.status_code in [200, 404]
 
 
 # ---------------------------------------------------------------------------

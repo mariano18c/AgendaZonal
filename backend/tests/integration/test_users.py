@@ -4,10 +4,17 @@ import pytest
 class TestAdminUsers:
 
     @pytest.fixture
-    def admin_setup(self, client, auth_headers):
-        """Primer usuario registrado es admin"""
-        h = auth_headers(username="adminmain", email="adminmain@test.com")
-        return h
+    def admin_setup(self, client):
+        """Create admin user via bootstrap-admin endpoint"""
+        resp = client.post("/api/auth/bootstrap-admin", json={
+            "username": "adminmain",
+            "email": "adminmain@test.com",
+            "phone_area_code": "0341",
+            "phone_number": "1234567",
+            "password": "password123",
+        })
+        token = resp.json()["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     @pytest.mark.integration
     def test_admin_crea_usuario(self, client, admin_setup):

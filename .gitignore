@@ -33,3 +33,7 @@ backend/uploads/
 # OS
 .DS_Store
 Thumbs.db
+
+# Caddy binary + logs
+caddy/
+caddy/*.log

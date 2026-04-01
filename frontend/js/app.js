@@ -34,6 +34,7 @@ async function updateNavbar() {
         ${pendingBadge}
         <a href="/add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
+        <button id="pwaInstallBtn" class="hidden text-green-600 hover:text-green-800" title="Instalar app">📲 Instalar</button>
         <button onclick="logout()" class="text-gray-600 hover:text-gray-800">Salir</button>
       </div>
     `;
@@ -69,4 +70,36 @@ function formatDate(dateString) {
 
 document.addEventListener('DOMContentLoaded', () => {
   updateNavbar();
+
+  // --- PWA: Register Service Worker ---
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      console.log('SW registered:', reg.scope);
+    }).catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+  }
+
+  // --- PWA: Install prompt ---
+  let deferredPrompt = null;
+  const installBtn = document.getElementById('pwaInstallBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.classList.remove('hidden');
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        console.log('PWA installed');
+      }
+      deferredPrompt = null;
+      installBtn.classList.add('hidden');
+    });
+  }
 });

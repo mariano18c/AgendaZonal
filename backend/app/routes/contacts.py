@@ -3,7 +3,7 @@ import logging
 import jwt
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from PIL import Image
@@ -22,6 +22,8 @@ from app.schemas.contact import (
 )
 from app.config import JWT_SECRET, JWT_ALGORITHM
 from app.auth import get_current_user
+from app.geo import bounding_box, haversine_km, validate_coordinates
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
@@ -29,7 +31,7 @@ router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 TRACKED_FIELDS = [
     "name", "phone", "email", "address", "city", "neighborhood",
     "category_id", "description", "schedule", "website", "photo_path",
-    "latitude", "longitude", "maps_url",
+    "latitude", "longitude", "maps_url", "instagram", "facebook", "about",
 ]
 
 # S-07: Protected fields that cannot be updated directly
@@ -73,7 +75,10 @@ def resize_image(image: Image.Image, max_size: tuple) -> Image.Image:
 def get_current_user_optional(
     authorization: str = Header(None), db: Session = Depends(get_db)
 ) -> User | None:
-    """Get current user or None if not authenticated"""
+    """Get current user or None if not authenticated.
+    
+    Logs invalid tokens for audit purposes instead of silently ignoring them.
+    """
     if not authorization:
         return None
     try:
@@ -83,9 +88,17 @@ def get_current_user_optional(
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id_str = payload.get("sub")
         if not user_id_str:
+            logging.debug("Optional auth: token missing 'sub' claim")
             return None
         user_id = int(user_id_str)
-    except Exception:
+    except jwt.ExpiredSignatureError:
+        logging.debug("Optional auth: token expired")
+        return None
+    except jwt.InvalidTokenError:
+        logging.debug("Optional auth: invalid token")
+        return None
+    except (ValueError, AttributeError):
+        logging.debug("Optional auth: malformed authorization header")
         return None
 
     user = db.query(User).filter(User.id == user_id).first()
@@ -148,14 +161,28 @@ def list_contacts(
     return query.offset(skip).limit(limit).all()
 
 
-@router.get("/search", response_model=list[ContactResponse])
+@router.get("/search")
+@limiter.limit("30/minute")
 def search_contacts(
+    request: Request,
     q: str | None = None,
     category_id: int | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+    radius_km: float = Query(default=10, ge=1, le=100),
+    skip: int = 0,
+    limit: int = Query(default=100, le=500),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Contact)
+    """Search contacts with optional geo filtering.
 
+    If lat+lon provided: filters by radius, sorts by distance, includes distance_km.
+    If only q/category_id: standard text search (backward compatible).
+    Can combine geo + text + category filters.
+    """
+    query = db.query(Contact).filter(Contact.status != "suspended")
+
+    # Text search
     if q:
         safe_q = escape_like(q)
         search = f"%{safe_q}%"
@@ -169,13 +196,94 @@ def search_contacts(
             )
         )
 
+    # Category filter
     if category_id is not None:
         query = query.filter(Contact.category_id == category_id)
 
-    if not q and category_id is None:
-        raise HTTPException(status_code=400, detail="Debe proporcionar 'q' o 'category_id'")
+    # Geo filtering
+    use_geo = lat is not None and lon is not None
+    if use_geo:
+        if not validate_coordinates(lat, lon):
+            raise HTTPException(status_code=400, detail="Coordenadas inválidas")
 
-    return query.all()
+        # Bounding box pre-filter (fast, uses numeric comparison)
+        bbox = bounding_box(lat, lon, radius_km)
+        query = query.filter(
+            Contact.latitude.isnot(None),
+            Contact.longitude.isnot(None),
+            Contact.latitude >= bbox.lat_min,
+            Contact.latitude <= bbox.lat_max,
+            Contact.longitude >= bbox.lon_min,
+            Contact.longitude <= bbox.lon_max,
+        )
+
+    # Require at least one filter (same as before)
+    if not q and category_id is None and not use_geo:
+        raise HTTPException(
+            status_code=400,
+            detail="Debe proporcionar 'q', 'category_id', o coordenadas (lat+lon)"
+        )
+
+    # For geo search, fetch more from DB since bounding box is larger than circle.
+    # The user-specified limit is applied AFTER distance filtering.
+    if use_geo:
+        db_limit = min(limit * 5, 2500)  # Fetch up to 5x requested, max 2500
+        results = query.offset(skip).limit(db_limit).all()
+    else:
+        results = query.offset(skip).limit(limit).all()
+
+    # If geo search, calculate precise distances, sort, then apply limit
+    if use_geo:
+        results_with_distance = []
+        for contact in results:
+            if contact.latitude is not None and contact.longitude is not None:
+                dist = haversine_km(lat, lon, contact.latitude, contact.longitude)
+                if dist <= radius_km:
+                    # Attach distance dynamically (not stored in DB)
+                    contact.distance_km = round(dist, 1)
+                    results_with_distance.append(contact)
+        # Sort by distance
+        results_with_distance.sort(key=lambda c: c.distance_km)
+        # Apply user-specified limit AFTER distance filtering
+        return results_with_distance[:limit]
+
+    return results
+
+
+@router.get("/export")
+def export_contacts(
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    category_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Export contacts as CSV or JSON."""
+    query = db.query(Contact)
+    if category_id is not None:
+        query = query.filter(Contact.category_id == category_id)
+    contacts = query.all()
+
+    if format == "json":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=[ContactResponse.model_validate(c).model_dump(mode="json") for c in contacts],
+            headers={"Content-Disposition": "attachment; filename=contactos.json"},
+        )
+
+    import csv
+    import io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["name", "phone", "email", "address", "city", "neighborhood",
+                     "category_id", "description", "schedule", "website"])
+    for c in contacts:
+        writer.writerow([c.name, c.phone, c.email, c.address, c.city, c.neighborhood,
+                         c.category_id, c.description, c.schedule, c.website])
+    from fastapi.responses import Response
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=contactos.csv"},
+    )
 
 
 @router.get("/pending", response_model=list[ContactResponse])
@@ -247,7 +355,9 @@ def get_contact_changes(
 
 
 @router.post("", response_model=ContactResponse, status_code=201)
+@limiter.limit("10/minute")
 def create_contact(
+    request: Request,
     data: ContactCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -620,11 +730,26 @@ def delete_contact(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Delete a contact. Owner can only delete if flagged for deletion. Admins can delete any contact."""
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
 
-    if contact.user_id != user.id and user.role not in ['admin', 'moderator']:
+    # Admin/moderator can delete any contact
+    is_admin = user.role in ['admin', 'moderator']
+    
+    # Owner can only delete if flagged for deletion
+    is_owner = contact.user_id == user.id
+    
+    if is_owner and not is_admin:
+        # Owner trying to delete - only allowed if flagged
+        if contact.status != 'flagged':
+            raise HTTPException(
+                status_code=403, 
+                detail="Para eliminar un contacto, primero debe solicitar la eliminación desde la página del contacto"
+            )
+    
+    if not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="No tiene permisos para eliminar este contacto")
 
     # Delete image if exists
@@ -643,3 +768,397 @@ def delete_contact(
     db.delete(contact)
     db.commit()
     return None
+
+
+@router.post("/{contact_id}/request-deletion", response_model=ContactResponse)
+def request_deletion(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Request deletion of own contact. Marks it as flagged for admin review."""
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+    
+    if contact.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Solo puede solicitar eliminación de sus propios contactos")
+    
+    if contact.status == 'flagged':
+        raise HTTPException(status_code=400, detail="Este contacto ya está marcado para eliminación")
+    
+    contact.status = 'flagged'
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.post("/{contact_id}/cancel-deletion", response_model=ContactResponse)
+def cancel_deletion(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cancel deletion request. Owner or admin can cancel."""
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+    
+    is_admin = user.role in ['admin', 'moderator']
+    
+    if contact.user_id != user.id and not is_admin:
+        raise HTTPException(status_code=403, detail="No tiene permisos para cancelar la eliminación")
+    
+    if contact.status != 'flagged':
+        raise HTTPException(status_code=400, detail="Este contacto no está marcado para eliminación")
+    
+    contact.status = 'active'
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.put("/{contact_id}/transfer-ownership", response_model=ContactResponse)
+def transfer_ownership(
+    contact_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Transfer ownership of a contact to another user (admin only).
+    
+    Body: { "new_owner_id": 123 }
+    """
+    if user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403, detail="Solo administradores pueden transferir propiedad")
+    
+    new_owner_id = data.get("new_owner_id")
+    if not new_owner_id:
+        raise HTTPException(status_code=400, detail="Se requiere new_owner_id")
+    
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+    
+    new_owner = db.query(User).filter(User.id == new_owner_id).first()
+    if not new_owner:
+        raise HTTPException(status_code=404, detail="Usuario nuevo propietario no encontrado")
+    
+    old_owner_id = contact.user_id
+    contact.user_id = new_owner_id
+    
+    # If flagged for deletion, reset status when transferring
+    if contact.status == 'flagged':
+        contact.status = 'active'
+    
+    # Save history
+    save_history(db, contact_id, user.id, "user_id", old_owner_id, new_owner_id)
+    
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.post("/{contact_id}/leads", status_code=201)
+def register_lead(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
+    """Register a lead event (WhatsApp click, phone call, etc)."""
+    from app.models.lead_event import LeadEvent
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+    lead = LeadEvent(
+        contact_id=contact_id,
+        user_id=user.id if user else None,
+        source="whatsapp",
+    )
+    db.add(lead)
+    db.commit()
+    return {"message": "Lead registrado"}
+
+
+@router.get("/{contact_id}/leads")
+def get_contact_leads(
+    contact_id: int,
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get leads for a contact (owner only)."""
+    from app.models.lead_event import LeadEvent
+    from datetime import timedelta
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+    if contact.user_id != user.id and user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver los leads")
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    leads = (
+        db.query(LeadEvent)
+        .filter(LeadEvent.contact_id == contact_id, LeadEvent.created_at >= since)
+        .all()
+    )
+
+    return {
+        "total": len(leads),
+        "period_days": days,
+        "by_source": {"whatsapp": sum(1 for l in leads if l.source == "whatsapp")},
+    }
+
+
+# ---------------------------------------------------------------------------
+# V3: Search by phone, related businesses, photos, schedules, friendly URLs
+# ---------------------------------------------------------------------------
+
+@router.get("/search/phone")
+def search_by_phone(
+    phone: str = Query(..., min_length=3),
+    db: Session = Depends(get_db),
+):
+    """Search contacts by phone number (partial match)."""
+    safe_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    # Escape LIKE wildcards to prevent wildcard injection
+    safe_phone = safe_phone.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    contacts = db.query(Contact).filter(
+        Contact.status != "suspended",
+        Contact.phone.contains(safe_phone, escape='\\'),
+    ).limit(20).all()
+    return contacts
+
+
+@router.get("/{contact_id}/related")
+def get_related_businesses(
+    contact_id: int,
+    radius_km: float = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    """Get related businesses: same category, within radius, excluding self."""
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+    if not contact.latitude or not contact.longitude or not contact.category_id:
+        return []
+
+    bbox = bounding_box(contact.latitude, contact.longitude, radius_km)
+    candidates = db.query(Contact).filter(
+        Contact.id != contact_id,
+        Contact.status == "active",
+        Contact.category_id == contact.category_id,
+        Contact.latitude.isnot(None),
+        Contact.longitude.isnot(None),
+        Contact.latitude >= bbox.lat_min,
+        Contact.latitude <= bbox.lat_max,
+        Contact.longitude >= bbox.lon_min,
+        Contact.longitude <= bbox.lon_max,
+    ).limit(20).all()
+
+    # Precise distance filter
+    results = []
+    for c in candidates:
+        dist = haversine_km(contact.latitude, contact.longitude, c.latitude, c.longitude)
+        if dist <= radius_km:
+            c.distance_km = round(dist, 1)
+            results.append(c)
+
+    results.sort(key=lambda c: c.distance_km)
+    return results[:limit]
+
+
+@router.get("/{contact_id}/photos")
+def list_photos(
+    contact_id: int,
+    db: Session = Depends(get_db),
+):
+    """List photos for a contact."""
+    from app.models.contact_photo import ContactPhoto
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+    photos = (
+        db.query(ContactPhoto)
+        .filter(ContactPhoto.contact_id == contact_id)
+        .order_by(ContactPhoto.sort_order)
+        .all()
+    )
+    return [{"id": p.id, "photo_path": p.photo_path, "caption": p.caption, "sort_order": p.sort_order} for p in photos]
+
+
+@router.post("/{contact_id}/photos", status_code=201)
+def upload_photo(
+    contact_id: int,
+    file: UploadFile = File(...),
+    caption: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Upload a photo for a contact (owner only, max 5)."""
+    from app.models.contact_photo import ContactPhoto
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+    if contact.user_id != user.id and user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403, detail="No tiene permisos")
+
+    # Check max photos
+    count = db.query(ContactPhoto).filter(ContactPhoto.contact_id == contact_id).count()
+    if count >= 5:
+        raise HTTPException(status_code=400, detail="Máximo 5 fotos por contacto")
+
+    # Validate JPEG
+    if not file.filename.lower().endswith(('.jpg', '.jpeg')):
+        raise HTTPException(status_code=400, detail="Solo JPG")
+    content = file.file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Máximo 2MB")
+    JPEG_MAGIC = b'\xFF\xD8\xFF'
+    if not content.startswith(JPEG_MAGIC):
+        raise HTTPException(status_code=400, detail="JPEG inválido")
+
+    file.file.seek(0)
+    UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "images"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    filename = f"contact_{contact_id}_photo_{count + 1}.jpg"
+    filepath = UPLOAD_DIR / filename
+    try:
+        image = Image.open(file.file)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        if image.width > 1200 or image.height > 1200:
+            image.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+        image.save(filepath, 'JPEG', quality=85)
+    except Exception as e:
+        logging.error(f"Error uploading photo: {e}")
+        raise HTTPException(status_code=500, detail="Error al procesar imagen")
+
+    photo = ContactPhoto(
+        contact_id=contact_id,
+        photo_path=f"/uploads/images/{filename}",
+        caption=caption,
+        sort_order=count + 1,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return {"id": photo.id, "photo_path": photo.photo_path, "caption": photo.caption}
+
+
+@router.delete("/{contact_id}/photos/{photo_id}", status_code=204)
+def delete_photo(
+    contact_id: int,
+    photo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete a photo (owner only)."""
+    from app.models.contact_photo import ContactPhoto
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404)
+    if contact.user_id != user.id and user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403)
+
+    photo = db.query(ContactPhoto).filter(
+        ContactPhoto.id == photo_id,
+        ContactPhoto.contact_id == contact_id,
+    ).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+
+    # Delete file
+    try:
+        full_path = Path(__file__).resolve().parent.parent.parent / photo.photo_path.lstrip("/")
+        if full_path.exists():
+            full_path.unlink()
+    except:
+        pass
+
+    db.delete(photo)
+    db.commit()
+    return None
+
+
+@router.get("/{contact_id}/schedules")
+def list_schedules(
+    contact_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get structured schedule for a contact."""
+    from app.models.schedule import Schedule
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+    schedules = (
+        db.query(Schedule)
+        .filter(Schedule.contact_id == contact_id)
+        .order_by(Schedule.day_of_week)
+        .all()
+    )
+
+    DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    result = []
+    for s in schedules:
+        result.append({
+            "id": s.id,
+            "day_of_week": s.day_of_week,
+            "day_name": DAY_NAMES[s.day_of_week] if 0 <= s.day_of_week <= 6 else "?",
+            "open_time": s.open_time,
+            "close_time": s.close_time,
+            "is_closed": s.open_time is None,
+        })
+    return result
+
+
+@router.put("/{contact_id}/schedules")
+def update_schedules(
+    contact_id: int,
+    schedules: list[dict],
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update full week schedule for a contact (owner only).
+
+    Body: [{"day_of_week": 0, "open_time": "08:00", "close_time": "18:00"}, ...]
+    Use null open_time to mark a day as closed.
+    """
+    from app.models.schedule import Schedule
+
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404)
+    if contact.user_id != user.id and user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403)
+
+    # Delete existing
+    db.query(Schedule).filter(Schedule.contact_id == contact_id).delete()
+
+    # Insert new
+    for s in schedules:
+        if not 0 <= s.get("day_of_week", -1) <= 6:
+            continue
+        schedule = Schedule(
+            contact_id=contact_id,
+            day_of_week=s["day_of_week"],
+            open_time=s.get("open_time"),
+            close_time=s.get("close_time"),
+        )
+        db.add(schedule)
+
+    db.commit()
+    return {"message": "Horarios actualizados"}

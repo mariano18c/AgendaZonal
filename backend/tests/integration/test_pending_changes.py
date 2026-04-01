@@ -102,5 +102,7 @@ class TestHistorial:
         })
         cid = create.json()["id"]
 
+        # Clear cookies to ensure no auth is sent
+        client.cookies.clear()
         resp = client.get(f"/api/contacts/{cid}/history")
         assert resp.status_code == 401

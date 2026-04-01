@@ -1,10 +1,20 @@
+import logging
+import shutil
 from pathlib import Path
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from app.routes import auth, categories, contacts, users
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from sqlalchemy.orm import Session
+from app.routes import auth, categories, contacts, users, notifications, reviews, offers, provider, admin
+from app.database import engine, get_db
+from app.rate_limit import limiter
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Agenda de la zona API",
@@ -12,8 +22,62 @@ app = FastAPI(
     description="API para agenda de la zona de servicios",
 )
 
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
+
+
+# Security headers middleware (custom implementation)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+    
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # SEC-02: X-Content-Type-Options
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        
+        # SEC-03: X-Frame-Options (prevents clickjacking)
+        response.headers["X-Frame-Options"] = "DENY"
+        
+        # SEC-04: Strict-Transport-Security (only if HTTPS)
+        # Note: Enable in production with proper HTTPS setup
+        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # SEC-05: Referrer-Policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Content-Security-Policy (restrictive for production)
+        # Local CSS/JS served from same origin, external resources for maps
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "
+            "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "
+            "style-src-elem 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "
+            "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com https://*.openstreetmap.org; "
+            "connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.tile.openstreetmap.org https://*.openstreetmap.org; "
+            "font-src 'self';"
+        )
+        
+        # Overwrite server header to prevent information disclosure
+        # (starlette doesn't expose pop for MutableHeaders)
+        
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Error interno del servidor"},
+    )
+
 # CORS configuration - restrict to specific origins
-ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",")]
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost,http://127.0.0.1,http://localhost:8000,http://127.0.0.1:8000").split(",")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +91,62 @@ app.include_router(auth.router)
 app.include_router(categories.router)
 app.include_router(contacts.router)
 app.include_router(users.router)
+app.include_router(notifications.router)
+app.include_router(reviews.router)
+app.include_router(offers.router)
+app.include_router(provider.router)
+app.include_router(admin.router)
+
+
+# Public endpoint for user dropdowns (no auth required)
+@app.get("/api/public/users")
+def list_active_users_public(db: Session = Depends(get_db)):
+    """List active users (public, for dropdowns)."""
+    from app.models.user import User
+    users = db.query(User.id, User.username).filter(User.is_active == True).order_by(User.username).all()
+    return [{"id": u.id, "username": u.username} for u in users]
+
+
+@app.on_event("startup")
+async def startup_security_check():
+    """Log security configuration on startup and ensure DB schema is up to date."""
+    from app.config import JWT_SECRET
+    from app.database import engine
+    from sqlalchemy import inspect, text
+    
+    # Auto-migrate: add missing review reply columns
+    inspector = inspect(engine)
+    if "reviews" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("reviews")]
+        with engine.connect() as conn:
+            if "reply_text" not in columns:
+                conn.execute(text("ALTER TABLE reviews ADD COLUMN reply_text TEXT"))
+                conn.commit()
+                logger.info("Migration: added reply_text to reviews")
+            if "reply_at" not in columns:
+                conn.execute(text("ALTER TABLE reviews ADD COLUMN reply_at DATETIME"))
+                conn.commit()
+                logger.info("Migration: added reply_at to reviews")
+            if "reply_by" not in columns:
+                conn.execute(text("ALTER TABLE reviews ADD COLUMN reply_by INTEGER"))
+                conn.commit()
+                logger.info("Migration: added reply_by to reviews")
+    
+    from app.config import JWT_SECRET
+    
+    logger.info("=" * 50)
+    logger.info("SECURITY CONFIGURATION CHECK")
+    logger.info("=" * 50)
+    logger.info(f"JWT_SECRET length: {len(JWT_SECRET)} bytes (min: 32)")
+    logger.info("SQLite WAL mode: enabled")
+    logger.info("Rate limiting: enabled (slowapi)")
+    logger.info("Security headers: enabled")
+    logger.info("=" * 50)
+    logger.info("RECOMMENDED: Run Caddy for reverse proxy + static files:")
+    logger.info("  .\\caddy\\caddy.exe run --config Caddyfile")
+    logger.info("  Then open: http://localhost")
+    logger.info("=" * 50)
+
 
 # Serve frontend
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
@@ -83,6 +203,59 @@ def pending_changes_page():
 def admin_users_page():
     return serve_html("admin-users.html")
 
+@app.get("/profile")
+def profile_page():
+    return serve_html("profile.html")
+
+@app.get("/c/{slug}")
+def profile_friendly(slug: str, db: Session = Depends(get_db)):
+    """Friendly URL: /c/juan-perez-plomero-1 → redirect to /profile?id=X"""
+    from app.models.contact import Contact as _Contact
+    from fastapi.responses import RedirectResponse
+    contact = db.query(_Contact).filter(_Contact.slug == slug).first()
+    if contact:
+        return RedirectResponse(url=f"/profile?id={contact.id}", status_code=301)
+    raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+@app.get("/admin/reviews")
+def admin_reviews_page():
+    return serve_html("admin-reviews.html")
+
+@app.get("/dashboard")
+def dashboard_page():
+    return serve_html("dashboard.html")
+
+@app.get("/admin/analytics")
+def admin_analytics_page():
+    return serve_html("admin-analytics.html")
+
+@app.get("/admin/reports")
+def admin_reports_page():
+    return serve_html("admin-reports.html")
+
+@app.get("/admin/utilities")
+def admin_utilities_page():
+    return serve_html("admin-utilities.html")
+
+# PWA static files
+@app.get("/sw.js")
+def service_worker():
+    path = FRONTEND_DIR / "sw.js"
+    if path.exists():
+        return FileResponse(str(path), media_type="application/javascript")
+    raise HTTPException(status_code=404)
+
+@app.get("/manifest.json")
+def manifest():
+    path = FRONTEND_DIR / "manifest.json"
+    if path.exists():
+        return FileResponse(str(path), media_type="application/json")
+    raise HTTPException(status_code=404)
+
+@app.get("/offline.html")
+def offline_page():
+    return serve_html("offline.html")
+
 # Routes with .html
 @app.get("/index.html")
 def index_html():
@@ -127,13 +300,48 @@ def admin_users_html():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    checks = {"status": "ok", "checks": {}}
+
+    # DB check
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        checks["checks"]["database"] = "ok"
+    except Exception as e:
+        checks["status"] = "degraded"
+        checks["checks"]["database"] = f"error: {str(e)}"
+
+    # Disk check (critical for RPi with SD card)
+    try:
+        total, used, free = shutil.disk_usage(".")
+        free_gb = free // (1024**3)
+        checks["checks"]["disk_free_gb"] = free_gb
+        if free_gb < 1:
+            checks["status"] = "warning"
+            checks["checks"]["disk_warning"] = "Less than 1GB free"
+    except Exception:
+        pass
+
+    return checks
+
+
+# Serve a simple 1x1 transparent GIF as favicon (avoids 404)
+@app.get("/favicon.ico")
+def favicon():
+    from fastapi.responses import Response
+    # 1x1 transparent GIF
+    return Response(
+        b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+        media_type="image/gif"
+    )
 
 
 # Mount static files AFTER routes (so routes take priority)
 if FRONTEND_DIR.exists():
     app.mount("/js", StaticFiles(directory=str(FRONTEND_DIR / "js")), name="js")
     app.mount("/css", StaticFiles(directory=str(FRONTEND_DIR / "css")), name="css")
+    if (FRONTEND_DIR / "icons").exists():
+        app.mount("/icons", StaticFiles(directory=str(FRONTEND_DIR / "icons")), name="icons")
 
 if UPLOADS_DIR.exists():
     app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")

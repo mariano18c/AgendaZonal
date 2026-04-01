@@ -17,9 +17,20 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+@router.get("/active")
+def list_active_users_simple(
+    db: Session = Depends(get_db),
+):
+    """List active users (public, for dropdowns). Returns only id and username."""
+    users = db.query(User.id, User.username).filter(User.is_active == True).order_by(User.username).all()
+    return [{"id": u.id, "username": u.username} for u in users]
+
+
 @router.get("", response_model=list[UserResponse])
 def list_users(
     filter: str = Query("all", description="Filter: all, active, inactive"),
+    role: str | None = Query(None, description="Filter by role: user, moderator, admin"),
+    username: str | None = Query(None, description="Filter by username (partial match)"),
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
@@ -29,6 +40,10 @@ def list_users(
         query = query.filter(User.is_active == True)
     elif filter == "inactive":
         query = query.filter(User.is_active == False)
+    if role:
+        query = query.filter(User.role == role)
+    if username:
+        query = query.filter(User.username.ilike(f"%{username}%"))
     return query.order_by(User.created_at.desc()).all()
 
 

@@ -6,3 +6,6 @@ pyjwt==2.10.1
 python-multipart==0.0.17
 pydantic[email]==2.10.0
 Pillow==11.1.0
+python-dotenv==1.0.1
+slowapi==0.1.9
+pydantic-settings==2.7.0

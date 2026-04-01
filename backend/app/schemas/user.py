@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from datetime import datetime
 
 
@@ -21,6 +21,8 @@ class UserUpdate(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: str
     email: str
@@ -28,12 +30,9 @@ class UserResponse(BaseModel):
     phone_number: str
     role: str
     is_active: bool
-    deactivated_at: datetime | None
-    deactivated_by: int | None
-    created_at: datetime | None
-
-    class Config:
-        from_attributes = True
+    deactivated_at: datetime | None = None
+    deactivated_by: int | None = None
+    created_at: datetime | None = None
 
 
 class UserRoleUpdate(BaseModel):
