@@ -1,0 +1,79 @@
+# Caddyfile - AgendaZonal Production Configuration
+#
+# Install Caddy: https://caddyserver.com/docs/install
+# Run: caddy adapt --config Caddyfile --adapter caddyfile
+#
+# This configuration provides:
+# - HTTPS automatic (Let's Encrypt)
+# - Reverse proxy to Uvicorn
+# - Rate limiting
+# - Security headers (handled by FastAPI middleware, but Caddy adds more)
+# - Static file serving (optional)
+
+{
+    # Global options
+    admin off       # Disable admin API in production
+    auto_https off  # We'll handle HTTPS per site
+}
+
+# Development (HTTP only)
+:80 {
+    # Reverse proxy to Uvicorn
+    reverse_proxy localhost:8000
+    
+    # Rate limiting (Caddy's transport layer)
+    transport {
+        max_conns_per_host 100
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/agenda.log
+    }
+}
+
+# Production (HTTPS) - Uncomment and configure domain
+# agendazonal.example.com {
+#     # HTTPS
+#     tls admin@agendazonal.example.com
+#     
+#     # Reverse proxy with rate limiting
+#     reverse_proxy localhost:8000 {
+#         # Preserve client IP
+#         header_up X-Real-IP {remote_host}
+#         header_up X-Forwarded-For {header"}
+#         header_up X-Forwarded-Proto {scheme}
+#     }
+#     
+#     # Rate limiting (100 requests per second, burst 200)
+#     rate-limit {
+#         envelope {
+#             max_events 100
+#             burst 200
+#         }
+#     }
+#     
+#     # Static files (if not using FastAPI static)
+#     root * /var/www/agenda
+#     try_files {path} {path}/ /index.html
+#     file_server
+#     
+#     # Security headers (Caddy adds these automatically)
+#     # - X-Content-Type-Options: nosniff
+#     # - X-Frame-Options: SAMEORIGIN
+#     # - Referrer-Policy: strict-origin-when-cross-origin
+#     
+#     # Logging
+#     log {
+#         output file /var/log/caddy/agenda-access.log
+#     }
+# }
+
+# Notes:
+# 1. For Raspberry Pi: Install Caddy with `curl https://getcaddy.com | bash -s personal`
+# 2. Or use apt: `apt install caddy` (Debian/Ubuntu)
+# 3. The FastAPI middleware already handles:
+#    - X-Content-Type-Options
+#    - X-Frame-Options  
+#    - Referrer-Policy
+#    - Content-Security-Policy

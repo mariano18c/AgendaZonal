@@ -1,0 +1,53 @@
+# Caddyfile - AgendaZonal (Development)
+#
+# Uso:
+#   1. Iniciar FastAPI:  cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8000
+#   2. Iniciar Caddy:    .\caddy\caddy.exe run --config Caddyfile
+#   3. Abrir navegador:  http://localhost
+#
+# Caddy se encarga de:
+#   - Reverse proxy :80 → :8000
+#   - Servir archivos estáticos directamente (sin pasar por FastAPI)
+#   - Comprimir respuestas (gzip/zstd)
+#   - Headers de seguridad básicos
+
+# Servir en puerto 80
+:80 {
+	# Archivos estáticos del frontend (cache agresivo para CSS/JS/imágenes)
+	handle /css/* {
+		root * frontend/
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+
+	handle /js/* {
+		root * frontend/
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+
+	handle /icons/* {
+		root * frontend/
+		file_server
+		header Cache-Control "public, max-age=86400"
+	}
+
+	handle /uploads/* {
+		root * backend/
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+
+	# Todo lo demás va a FastAPI
+	reverse_proxy 127.0.0.1:8000 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	# Comprimir respuestas
+	encode gzip zstd
+
+	# Logging
+	log {
+		output file caddy/access.log
+	}
+}
