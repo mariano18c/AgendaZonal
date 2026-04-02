@@ -71,6 +71,7 @@
           </thead>
           <tbody id="usersTable" class="divide-y divide-gray-200"></tbody>
         </table>
+        <div id="pagination" class="mt-4"></div>
       </div>
     </div>
   </main>
@@ -162,7 +163,11 @@
       return new Date(dateStr).toLocaleDateString('es-AR');
     }
 
-    async function loadUsers() {
+    let currentPage = 1;
+    const itemsPerPage = 20;
+
+    async function loadUsers(page = 1) {
+      currentPage = page;
       // First, try to refresh user data from API
       try {
         const token = getToken();
@@ -170,7 +175,7 @@
           document.getElementById('loginRequired').classList.remove('hidden');
           return;
         }
-        
+
         // Get current user info from API
         const userData = await apiRequest('/api/auth/me');
         setUser(userData);
@@ -187,12 +192,14 @@
         return;
       }
       document.getElementById('content').classList.remove('hidden');
+      const skip = (page - 1) * itemsPerPage;
       try {
         const filter = document.getElementById('userFilter').value;
-        const users = await getUsers(filter);
+        const data = await getUsers(filter, skip, itemsPerPage);
         document.getElementById('loadingMsg').classList.add('hidden');
-        document.getElementById('userCount').textContent = `${users.length} usuario(s)`;
-        renderUsers(users);
+        document.getElementById('userCount').textContent = `${data.total} usuario(s)`;
+        renderUsers(data.users);
+        renderPagination('pagination', page, data.total, itemsPerPage, (p) => loadUsers(p));
       } catch (err) {
         document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
       }
