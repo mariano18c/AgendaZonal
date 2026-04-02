@@ -3,7 +3,7 @@
 ## Metadata
 - **Creado**: 2026-03-29
 - **Autor**: MarianoC
-- **Estado**: active
+- **Estado**: ✅ archived
 - **Basado en**: SPEC-003 | PROPOSAL-003
 
 ---

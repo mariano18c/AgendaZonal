@@ -3,7 +3,7 @@
 ## Metadata
 - **Fecha**: 2026-03-29
 - **Autor**: MarianoC
-- **Estado**: pending_approval
+- **Estado**: ✅ archived
 - **Depende de**: SPEC-001 (Auth) ✅ | SPEC-002 (CRUD) ✅
 
 ## Overview

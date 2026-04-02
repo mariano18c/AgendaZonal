@@ -2,8 +2,9 @@
 
 ## Metadata
 - **Creado**: 2026-03-29
+- **Archivado**: 2026-04-02
 - **Autor**: MarianoC
-- **Estado**: active
+- **Estado**: ✅ archived
 - **Depende de**: SPEC-001 (Auth) ✅ | SPEC-002 (CRUD) ✅
 
 ## Overview
