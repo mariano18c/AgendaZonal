@@ -9,3 +9,4 @@ Pillow==11.1.0
 python-dotenv==1.0.1
 slowapi==0.1.9
 pydantic-settings==2.7.0
+pywebpush==2.0.1

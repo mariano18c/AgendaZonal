@@ -26,11 +26,13 @@ def list_active_users_simple(
     return [{"id": u.id, "username": u.username} for u in users]
 
 
-@router.get("", response_model=list[UserResponse])
+@router.get("")
 def list_users(
     filter: str = Query("all", description="Filter: all, active, inactive"),
     role: str | None = Query(None, description="Filter by role: user, moderator, admin"),
     username: str | None = Query(None, description="Filter by username (partial match)"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
@@ -44,7 +46,26 @@ def list_users(
         query = query.filter(User.role == role)
     if username:
         query = query.filter(User.username.ilike(f"%{username}%"))
-    return query.order_by(User.created_at.desc()).all()
+
+    total = query.count()
+    users = query.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "phone_area_code": u.phone_area_code,
+                "phone_number": u.phone_number,
+                "role": u.role,
+                "is_active": u.is_active,
+                "created_at": u.created_at,
+            }
+            for u in users
+        ],
+        "total": total,
+    }
 
 
 @router.get("/{user_id}", response_model=UserResponse)

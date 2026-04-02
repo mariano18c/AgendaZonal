@@ -37,3 +37,17 @@ Thumbs.db
 # Caddy binary + logs
 caddy/
 caddy/*.log
+
+# Node
+node_modules/
+
+# Archives
+*.7z
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Misc
+nul

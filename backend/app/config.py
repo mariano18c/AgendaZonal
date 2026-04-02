@@ -28,3 +28,28 @@ else:
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
+
+# ---------------------------------------------------------------------------
+# VAPID Keys for Web Push Notifications
+# ---------------------------------------------------------------------------
+# Generate once with:
+#   python -c "from pywebpush import vapid; keys = vapid.generate_vapid_key_pair(); print('Private:', keys[0]); print('Public:', keys[1])"
+#
+# Store in .env as:
+#   VAPID_PRIVATE_KEY=<private_key>
+#   VAPID_PUBLIC_KEY=<public_key>
+#   VAPID_CLAIM_EMAIL=mailto:admin@tudominio.com
+# ---------------------------------------------------------------------------
+
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIM_EMAIL = os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@agendazonal.local")
+
+if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+    logger.warning(
+        "VAPID keys not configured. Push notifications will not work. "
+        "Generate with: python -c \"from pywebpush import vapid; "
+        "keys = vapid.generate_vapid_key_pair(); "
+        "print('VAPID_PRIVATE_KEY=' + keys[0]); "
+        "print('VAPID_PUBLIC_KEY=' + keys[1])\""
+    )

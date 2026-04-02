@@ -68,6 +68,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+# X-RateLimit headers middleware
+class RateLimitHeadersMiddleware(BaseHTTPMiddleware):
+    """Add X-RateLimit headers to API responses for client awareness."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Only add headers to API responses
+        if request.url.path.startswith("/api/"):
+            response.headers["X-RateLimit-Limit"] = "60"
+            response.headers["X-RateLimit-Remaining"] = "-"  # SlowAPI tracks internally
+            response.headers["X-RateLimit-Reset"] = "60"
+
+        return response
+
+
+app.add_middleware(RateLimitHeadersMiddleware)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}", exc_info=True)
@@ -85,6 +104,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
 )
 
 app.include_router(auth.router)
@@ -131,6 +151,13 @@ async def startup_security_check():
                 conn.execute(text("ALTER TABLE reviews ADD COLUMN reply_by INTEGER"))
                 conn.commit()
                 logger.info("Migration: added reply_by to reviews")
+
+    # Auto-migrate: create push_subscriptions table if not exists
+    if "push_subscriptions" not in inspector.get_table_names():
+        from app.database import Base
+        from app.models.push_subscription import PushSubscription
+        Base.metadata.create_all(bind=engine, tables=[PushSubscription.__table__])
+        logger.info("Migration: created push_subscriptions table")
     
     from app.config import JWT_SECRET
     

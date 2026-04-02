@@ -10,3 +10,4 @@ from app.models.report import Report
 from app.models.utility_item import UtilityItem
 from app.models.contact_photo import ContactPhoto
 from app.models.schedule import Schedule
+from app.models.push_subscription import PushSubscription

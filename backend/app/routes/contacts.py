@@ -148,17 +148,21 @@ def can_verify_change(user, contact):
     return False
 
 
-@router.get("", response_model=list[ContactResponse])
+@router.get("")
 def list_contacts(
     skip: int = 0,
-    limit: int = Query(default=100, le=500),
+    limit: int = Query(default=20, le=100),
     category_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Contact)
+    query = db.query(Contact).filter(Contact.status != "suspended")
     if category_id is not None:
         query = query.filter(Contact.category_id == category_id)
-    return query.offset(skip).limit(limit).all()
+    
+    total = query.count()
+    contacts = query.offset(skip).limit(limit).all()
+    
+    return {"contacts": contacts, "total": total}
 
 
 @router.get("/search")
@@ -193,6 +197,7 @@ def search_contacts(
                 Contact.neighborhood.ilike(search),
                 Contact.description.ilike(search),
                 Contact.schedule.ilike(search),
+                Contact.phone.ilike(search),
             )
         )
 
@@ -224,6 +229,9 @@ def search_contacts(
             detail="Debe proporcionar 'q', 'category_id', o coordenadas (lat+lon)"
         )
 
+    # Get total count before pagination
+    total = query.count()
+
     # For geo search, fetch more from DB since bounding box is larger than circle.
     # The user-specified limit is applied AFTER distance filtering.
     if use_geo:
@@ -245,9 +253,9 @@ def search_contacts(
         # Sort by distance
         results_with_distance.sort(key=lambda c: c.distance_km)
         # Apply user-specified limit AFTER distance filtering
-        return results_with_distance[:limit]
+        return {"contacts": results_with_distance[:limit], "total": len(results_with_distance)}
 
-    return results
+    return {"contacts": results, "total": total}
 
 
 @router.get("/export")
@@ -286,22 +294,30 @@ def export_contacts(
     )
 
 
-@router.get("/pending", response_model=list[ContactResponse])
+@router.get("/pending")
 def list_pending_contacts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """List contacts with pending changes (only for users with permission)"""
     # Get contacts owned by user or if user is moderator/admin
     if user.role in ['moderator', 'admin']:
-        contacts = db.query(Contact).filter(Contact.pending_changes_count > 0).all()
+        query = db.query(Contact).filter(Contact.pending_changes_count > 0)
     else:
-        contacts = db.query(Contact).filter(
+        query = db.query(Contact).filter(
             Contact.user_id == user.id,
             Contact.pending_changes_count > 0
-        ).all()
-    
-    return contacts
+        )
+
+    total = query.count()
+    contacts = query.order_by(Contact.updated_at.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "contacts": contacts,
+        "total": total,
+    }
 
 
 @router.get("/{contact_id}", response_model=ContactResponse)
@@ -312,9 +328,11 @@ def get_contact(contact_id: int, db: Session = Depends(get_db)):
     return contact
 
 
-@router.get("/{contact_id}/history", response_model=list[ContactHistoryResponse])
+@router.get("/{contact_id}/history")
 def get_contact_history(
     contact_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -322,13 +340,15 @@ def get_contact_history(
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
-    
-    return (
-        db.query(ContactHistory)
-        .filter(ContactHistory.contact_id == contact_id)
-        .order_by(ContactHistory.changed_at.desc())
-        .all()
-    )
+
+    query = db.query(ContactHistory).filter(ContactHistory.contact_id == contact_id)
+    total = query.count()
+    history = query.order_by(ContactHistory.changed_at.desc()).offset(skip).limit(limit).all()
+
+    return {
+        "history": history,
+        "total": total,
+    }
 
 
 @router.get("/{contact_id}/changes", response_model=list[ContactChangeResponse])
@@ -715,9 +735,11 @@ def verify_contact(
     if data.is_verified:
         contact.verified_by = user.id
         contact.verified_at = datetime.now(timezone.utc)
+        contact.verification_level = max(contact.verification_level, 1)  # Al menos nivel 1
     else:
         contact.verified_by = None
         contact.verified_at = None
+        contact.verification_level = 0
 
     db.commit()
     db.refresh(contact)
