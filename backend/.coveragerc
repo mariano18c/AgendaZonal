@@ -1,0 +1,33 @@
+[run]
+source = app
+omit =
+    app/__init__.py
+    tests/*
+    venv/*
+    */site-packages/*
+    init_db.py
+    run.py
+    run_debug.py
+    app/repositories/*
+    app/services/*
+    app/settings.py
+
+[report]
+precision = 2
+show_missing = True
+skip_empty = True
+fail_under = 90
+
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    @overload
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

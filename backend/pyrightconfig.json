@@ -1,0 +1,12 @@
+{
+  "include": ["app"],
+  "exclude": ["venv", "tests"],
+  "typeCheckingMode": "basic",
+  "reportArgumentType": "none",
+  "reportAssignmentType": "none",
+  "reportOperatorIssue": "none",
+  "reportCallIssue": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportGeneralTypeIssues": "none"
+}
