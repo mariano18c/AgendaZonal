@@ -5,9 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Editar Contacto - Agenda de la zona</title>
   <link rel="stylesheet" href="/css/output.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="manifest" href="/manifest.json">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/geo.js"></script>
   <script src="/js/app.js"></script>
+  <style>
+    #map { height: 250px; border-radius: 0.5rem; z-index: 1; }
+    #photoPreview img { max-height: 200px; border-radius: 0.5rem; }
+    .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; }
+    .gallery-grid img { width: 100%; height: 100px; object-fit: cover; border-radius: 0.5rem; cursor: pointer; }
+    .gallery-item { position: relative; }
+    .gallery-item .delete-btn { position: absolute; top: 4px; right: 4px; background: rgba(220,38,38,0.9); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer; }
+    input[type="file"] { color: transparent; }
+    input[type="file"]::-webkit-file-upload-button { color: initial; }
+  </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <nav class="bg-white shadow-sm border-b">
@@ -17,96 +30,200 @@
     </div>
   </nav>
 
-  <main class="max-w-lg mx-auto px-4 py-8">
+  <main class="max-w-6xl mx-auto px-4 py-8">
     <div class="mb-6">
-      <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
+      <a href="#" id="backLink" class="text-blue-600 hover:underline">← Volver</a>
     </div>
 
     <h1 class="text-2xl font-bold text-gray-800 mb-2">Editar Contacto</h1>
-    <p id="permissionInfo" class="text-gray-600 mb-6"></p>
+    <p id="permissionInfo" class="text-gray-800 mb-6"></p>
+
+    <!-- Info badges (solo visible para todos) -->
+    <div id="infoBadges" class="hidden mb-4 flex gap-2 flex-wrap"></div>
 
     <div id="loadingMsg" class="text-center text-gray-500 py-10">Cargando contacto...</div>
 
-    <form id="editForm" class="hidden bg-white rounded-lg shadow-sm border p-6 space-y-4">
+    <form id="editForm" class="hidden bg-white rounded-lg shadow-sm border p-6 space-y-5">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
         <input type="text" id="name" required
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
       </div>
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono *</label>
         <input type="text" id="phone" required
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
       </div>
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-        <select id="category" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        <select id="category" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
           <option value="">Seleccionar categoría</option>
         </select>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Horario</label>
-        <input type="text" id="schedule"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-        <input type="email" id="email"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-      </div>
-
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Sitio web</label>
-        <input type="url" id="website"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-      </div>
-
-      <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
         <input type="text" id="address"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
       </div>
 
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
           <input type="text" id="city"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Barrio</label>
           <input type="text" id="neighborhood"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
         </div>
+      </div>
+
+      <!-- Geolocalización -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+        <div class="flex gap-2 mb-2">
+          <button type="button" onclick="getMyLocation()" id="geoBtn" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm">
+            📍 Obtener mi ubicación
+          </button>
+          <span id="geoStatus" class="text-sm text-gray-500 self-center"></span>
+        </div>
+        <div class="grid grid-cols-2 gap-4 mb-2 hidden">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Latitud</label>
+            <input type="number" step="any" id="latitude"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Longitud</label>
+            <input type="number" step="any" id="longitude"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          </div>
+        </div>
+        <div id="map" class="hidden"></div>
       </div>
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">URL de Google Maps</label>
         <input type="url" id="maps_url"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
       </div>
 
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Latitud</label>
-          <input type="number" step="any" id="latitude"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Instagram</label>
+          <input type="text" id="instagram" placeholder="@usuario o URL"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Longitud</label>
-          <input type="number" step="any" id="longitude"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Facebook</label>
+          <input type="text" id="facebook" placeholder="URL de Facebook"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
         </div>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Sitio web</label>
+        <input type="url" id="website"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input type="email" id="email"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <!-- Horario -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Horario</label>
+        <!-- Toggle for schedule mode -->
+        <div class="flex items-center gap-2 mb-2">
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="scheduleModeToggle" class="sr-only peer" onchange="toggleScheduleMode()">
+            <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <span class="ml-2 text-sm text-gray-600">Usar horario por día</span>
+          </label>
+        </div>
+        
+        <!-- Text mode -->
+        <div id="scheduleTextMode">
+          <input type="text" id="schedule" placeholder="Ej: Lun a Vie 9:00-18:00, Sáb 9:00-13:00"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        </div>
+        
+        <!-- Structured schedule grid - compact -->
+        <div id="scheduleGrid" class="hidden">
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px;">
+            <span>Lun</span>
+            <span>Mar</span>
+            <span>Mié</span>
+            <span>Jue</span>
+            <span>Vie</span>
+            <span>Sáb</span>
+            <span>Dom</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+            <input type="time" id="schedule_mon_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_tue_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_wed_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_thu_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_fri_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_sat_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_sun_open" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+            <input type="time" id="schedule_mon_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_tue_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_wed_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_thu_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_fri_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_sat_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+            <input type="time" id="schedule_sun_close" style="width:100%;padding:2px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Descripción corta</label>
         <textarea id="description" rows="3"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+      </div>
+
+      <!-- Foto principal -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Foto principal</label>
+        <input type="file" id="photo" accept="image/jpeg" 
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        <div id="photoPreview" class="hidden mt-2">
+          <img id="photoPreviewImg" src="" alt="Preview" class="max-h-48 rounded-lg">
+          <button type="button" onclick="removePhoto()" class="text-red-600 text-sm hover:underline mt-1">Eliminar imagen</button>
+        </div>
+        <div id="currentPhoto" class="mt-2">
+          <img id="currentPhotoImg" src="" alt="Foto actual" class="max-h-48 rounded-lg">
+          <button type="button" onclick="deleteCurrentPhoto()" id="deleteCurrentPhotoBtn" class="text-red-600 text-sm hover:underline mt-1 hidden">Eliminar foto</button>
+        </div>
+      </div>
+
+      <!-- Galería de fotos adicionales -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Fotos adicionales (máx 5)</label>
+        <div id="galleryUpload" class="mb-2">
+          <input type="file" id="galleryFiles" accept="image/jpeg" multiple
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div id="galleryPreview" class="gallery-grid"></div>
+        <div id="existingGallery" class="gallery-grid mt-2"></div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Acerca</label>
+        <textarea id="about" rows="5"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          placeholder="Descripción extendida del negocio, servicios, historia..."></textarea>
       </div>
 
       <div id="errorMsg" class="hidden text-red-600 text-sm"></div>
@@ -124,11 +241,17 @@
     let user = null;
     let isOwner = false;
     let isModeratorOrAdmin = false;
+    let map = null;
+    let selectedPhoto = null;
+    let selectedGalleryFiles = [];
+
+    const params = new URLSearchParams(window.location.search);
+    const contactId = params.get('id');
+
+    // Update title and back link
+    document.title = `Editar: ${contactId ? 'Cargando...' : 'Contacto'}`;
 
     async function loadContact() {
-      const params = new URLSearchParams(window.location.search);
-      const contactId = params.get('id');
-
       if (!contactId) {
         document.getElementById('loadingMsg').innerHTML = '<p class="text-red-500">No se especificó un contacto</p>';
         return;
@@ -136,6 +259,11 @@
 
       try {
         contact = await getContact(contactId);
+        document.title = `Editar: ${contact.name}`;
+        
+        // Update back link
+        document.getElementById('backLink').href = `/profile?id=${contactId}`;
+
         user = getUser();
         
         if (user) {
@@ -145,20 +273,77 @@
 
         // Show permission info
         if (isOwner || isModeratorOrAdmin) {
-          document.getElementById('permissionInfo').textContent = 'Podés editar todos los campos. Los cambios se aplicarán inmediatamente.';
+          document.getElementById('permissionInfo').textContent = '👤 Podés editar todos los campos. Los cambios se aplicarán inmediatamente.';
         } else if (user) {
-          document.getElementById('permissionInfo').textContent = 'Podés editar solo los campos vacíos. Los cambios requerirán verificación.';
+          document.getElementById('permissionInfo').textContent = '💡 Podés editar solo los campos vacíos. Los cambios requerirán verificación.';
         } else {
-          document.getElementById('permissionInfo').textContent = 'Podés sugerir cambios para los campos vacíos. Los cambios requerirán verificación.';
+          document.getElementById('permissionInfo').textContent = '🔒 Iniciá sesión para editar. Podés sugerir cambios para los campos vacíos.';
         }
 
+        // Show info badges
+        showInfoBadges();
+
         await loadCategories();
+        await loadGallery();
         populateForm();
+        
+        // Init map if coordinates exist
+        if (contact.latitude && contact.longitude) {
+          initEditMap(contact.latitude, contact.longitude);
+        }
         
         document.getElementById('loadingMsg').classList.add('hidden');
         document.getElementById('editForm').classList.remove('hidden');
       } catch (err) {
         document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
+      }
+    }
+
+    function showInfoBadges() {
+      const badges = [];
+      if (contact.is_verified) {
+        badges.push('<span class="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full">✓ Verificado</span>');
+      }
+      if (contact.avg_rating && contact.avg_rating > 0) {
+        badges.push(`<span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-sm rounded-full">⭐ ${contact.avg_rating.toFixed(1)} (${contact.review_count || 0} reseñas)</span>`);
+      }
+      if (contact.pending_changes_count > 0) {
+        badges.push(`<span class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded-full">⏳ ${contact.pending_changes_count} cambio(s) pendiente(s)</span>`);
+      }
+      
+      if (badges.length > 0) {
+        document.getElementById('infoBadges').innerHTML = badges.join('');
+        document.getElementById('infoBadges').classList.remove('hidden');
+      }
+    }
+
+    async function loadGallery() {
+      if (!isOwner && !isModeratorOrAdmin) return;
+      
+      try {
+        const photos = await apiRequest(`/api/contacts/${contactId}/photos`);
+        const galleryDiv = document.getElementById('existingGallery');
+        
+        if (photos.length > 0) {
+          galleryDiv.innerHTML = photos.map(p => `
+            <div class="gallery-item">
+              <img src="${escapeHtml(p.photo_path)}" alt="Foto" onclick="window.open('${escapeHtml(p.photo_path)}', '_blank')">
+              <button type="button" class="delete-btn" onclick="deleteGalleryPhoto(${p.id})" title="Eliminar">×</button>
+            </div>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Error loading gallery:', err);
+      }
+    }
+
+    async function deleteGalleryPhoto(photoId) {
+      if (!confirm('¿Eliminar esta foto?')) return;
+      try {
+        await apiRequest(`/api/contacts/${contactId}/photos/${photoId}`, { method: 'DELETE' });
+        await loadGallery();
+      } catch (err) {
+        alert('Error: ' + err.message);
       }
     }
 
@@ -178,28 +363,21 @@
     }
 
     function getCategoryEmoji(code) {
-      const emojis = {
-        100: '🔧', 101: '🔥', 102: '⚡', 103: '✂️', 104: '🧱',
-        105: '🖌️', 106: '🪚', 107: '🛒', 108: '🥩', 109: '🥬',
-        110: '🥖', 111: '👕', 112: '💊', 113: '📚', 114: '🍺',
-        115: '🍽️', 116: '🎶', 117: '🎁', 118: '🐾', 119: '🔩',
-        120: '🏪', 121: '🧸', 122: '📦', 123: '❤️', 124: '🏠',
-        999: '📌'
-      };
+      const emojis = {100:'🔧',101:'🔥',102:'⚡',103:'✂️',104:'🧱',105:'🖌️',106:'🪚',107:'🛒',108:'🥩',109:'🥬',110:'🥖',111:'👕',112:'💊',113:'📚',114:'🍺',115:'🍽️',116:'🎶',117:'🎁',118:'🐾',119:'🔩',120:'🏪',121:'🧸',122:'📦',123:'❤️',124:'🏠',999:'📌'};
       return emojis[code] || '📌';
     }
 
     function populateForm() {
       const fields = ['name', 'phone', 'email', 'address', 'city', 'neighborhood', 
-                      'description', 'schedule', 'website', 'maps_url', 'latitude', 'longitude'];
+                      'description', 'about', 'schedule', 'website', 'maps_url', 
+                      'latitude', 'longitude', 'instagram', 'facebook'];
       
       fields.forEach(field => {
         const input = document.getElementById(field);
-        if (input) {
+        if (input && contact[field] !== undefined) {
           input.value = contact[field] || '';
           
-          // Disable if not editable
-          if (!canEditField(field, contact[field])) {
+          if (!canEditField(field)) {
             input.disabled = true;
             input.classList.add('bg-gray-100', 'text-gray-500');
           }
@@ -211,71 +389,348 @@
       if (contact.category_id) {
         categorySelect.value = contact.category_id;
       }
-      if (!canEditField('category_id', contact.category_id)) {
+      if (!canEditField('category_id')) {
         categorySelect.disabled = true;
         categorySelect.classList.add('bg-gray-100', 'text-gray-500');
       }
+
+      // Current photo
+      if (contact.photo_path) {
+        document.getElementById('currentPhotoImg').src = contact.photo_path;
+        document.getElementById('currentPhoto').classList.remove('hidden');
+        if (isOwner || isModeratorOrAdmin) {
+          document.getElementById('deleteCurrentPhotoBtn').classList.remove('hidden');
+        }
+      } else {
+        document.getElementById('currentPhoto').classList.add('hidden');
+      }
+
+      // Photo input - only for owner/moderator
+      if (!isOwner && !isModeratorOrAdmin) {
+        document.getElementById('photo').closest('div').classList.add('hidden');
+        document.getElementById('galleryUpload').classList.add('hidden');
+      }
+
+      // Load structured schedules
+      loadSchedules();
     }
 
-    function canEditField(fieldName, currentValue) {
-      // Owner or moderator/admin can edit all
-      if (isOwner || isModeratorOrAdmin) return true;
+    async function loadSchedules() {
+      if (!contactId) return;
+      try {
+        const schedules = await apiRequest(`/api/contacts/${contactId}/schedules`);
+        
+        if (schedules.length > 0) {
+          // If there are structured schedules, auto-enable the toggle
+          document.getElementById('scheduleModeToggle').checked = true;
+          toggleScheduleMode();
+          
+          const dayMap = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat' };
+          
+          schedules.forEach(s => {
+            const dayKey = dayMap[s.day_of_week];
+            if (dayKey) {
+              const openInput = document.getElementById(`schedule_${dayKey}_open`);
+              const closeInput = document.getElementById(`schedule_${dayKey}_close`);
+              if (openInput && s.open_time) openInput.value = s.open_time.substring(0, 5);
+              if (closeInput && s.close_time) closeInput.value = s.close_time.substring(0, 5);
+            }
+          });
+        }
+      } catch (err) {
+        console.log('No structured schedules found');
+      }
+    }
+
+    function getStructuredSchedules() {
+      const toggle = document.getElementById('scheduleModeToggle');
+      if (!toggle || !toggle.checked) return [];
       
-      // Others can only edit empty fields
-      return currentValue === null || currentValue === '';
+      const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      const schedules = [];
+      
+      days.forEach((day, index) => {
+        const openInput = document.getElementById(`schedule_${day}_open`);
+        const closeInput = document.getElementById(`schedule_${day}_close`);
+        
+        if (openInput && closeInput && openInput.value && closeInput.value) {
+          schedules.push({
+            day_of_week: index + 1, // Monday = 1
+            open_time: openInput.value + ':00',
+            close_time: closeInput.value + ':00'
+          });
+        }
+      });
+      
+      return schedules;
     }
 
+    function toggleScheduleMode() {
+      const toggle = document.getElementById('scheduleModeToggle');
+      const textMode = document.getElementById('scheduleTextMode');
+      const gridMode = document.getElementById('scheduleGrid');
+      
+      if (toggle.checked) {
+        textMode.classList.add('hidden');
+        gridMode.classList.remove('hidden');
+      } else {
+        textMode.classList.remove('hidden');
+        gridMode.classList.add('hidden');
+      }
+    }
+
+    function canEditField(fieldName) {
+      if (isOwner || isModeratorOrAdmin) return true;
+      const value = contact[fieldName];
+      return value === null || value === '';
+    }
+
+    // Geolocation
+    async function getMyLocation() {
+      const btn = document.getElementById('geoBtn');
+      const status = document.getElementById('geoStatus');
+      btn.disabled = true;
+      btn.textContent = '⏳ Obteniendo...';
+      
+      try {
+        const pos = await getUserLocation();
+        document.getElementById('latitude').value = pos.lat;
+        document.getElementById('longitude').value = pos.lon;
+        status.textContent = '✅ Ubicación obtenida';
+        
+        // Update map
+        if (map) {
+          map.setView([pos.lat, pos.lon], 15);
+          if (window._editMarker) {
+            window._editMarker.setLatLng([pos.lat, pos.lon]);
+          } else {
+            window._editMarker = L.marker([pos.lat, pos.lon]).addTo(map).bindPopup('Nueva ubicación').openPopup();
+          }
+        } else {
+          initEditMap(pos.lat, pos.lon);
+        }
+      } catch (err) {
+        status.textContent = '❌ ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📍 Obtener mi ubicación';
+      }
+    }
+
+    function initEditMap(lat, lon) {
+      const mapDiv = document.getElementById('map');
+      
+      // Destroy existing map if any
+      if (map) {
+        map.remove();
+        map = null;
+      }
+      
+      // Show map container with explicit size
+      mapDiv.classList.remove('hidden');
+      mapDiv.style.display = 'block';
+      
+      // Wait for DOM to update
+      setTimeout(() => {
+        map = L.map('map', { 
+          dragging: true, 
+          zoomControl: true 
+        }).setView([lat, lon], 15);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap',
+          maxZoom: 19
+        }).addTo(map);
+        
+        // Remove existing marker if any
+        if (window._editMarker) {
+          map.removeLayer(window._editMarker);
+        }
+        
+        // Create marker with default icon - draggable
+        window._editMarker = L.marker([lat, lon], { draggable: true }).addTo(map).bindPopup('📍 Arrastrar para mover');
+        
+        window._editMarker.on('dragend', (e) => {
+          const pos = e.target.getLatLng();
+          document.getElementById('latitude').value = pos.lat.toFixed(6);
+          document.getElementById('longitude').value = pos.lng.toFixed(6);
+        });
+        
+        // Click on map to move marker
+        map.on('click', function(e) {
+          const { lat, lng } = e.latlng;
+          document.getElementById('latitude').value = lat.toFixed(6);
+          document.getElementById('longitude').value = lng.toFixed(6);
+          
+          window._editMarker.setLatLng([lat, lng]);
+          window._editMarker.bindPopup('📍Nueva ubicación').openPopup();
+        });
+        
+        // Force map resize after init
+        setTimeout(() => map.invalidateSize(), 100);
+      }, 50);
+    }
+
+    // Photo handlers
+    document.getElementById('photo').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        if (!file.type.includes('jpeg')) {
+          alert('Solo se permiten imágenes JPEG');
+          this.value = '';
+          return;
+        }
+        selectedPhoto = file;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById('photoPreviewImg').src = e.target.result;
+          document.getElementById('photoPreview').classList.remove('hidden');
+          document.getElementById('currentPhoto').classList.add('hidden');
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function removePhoto() {
+      selectedPhoto = null;
+      document.getElementById('photo').value = '';
+      document.getElementById('photoPreview').classList.add('hidden');
+      if (contact.photo_path) {
+        document.getElementById('currentPhotoImg').src = contact.photo_path;
+        document.getElementById('currentPhoto').classList.remove('hidden');
+      }
+    }
+
+    async function deleteCurrentPhoto() {
+      if (!confirm('¿Eliminar la foto actual?')) return;
+      try {
+        await deleteContactImage(contactId);
+        contact.photo_path = null;
+        document.getElementById('currentPhoto').classList.add('hidden');
+        document.getElementById('deleteCurrentPhotoBtn').classList.add('hidden');
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    // Gallery handlers
+    document.getElementById('galleryFiles').addEventListener('change', function(e) {
+      const files = Array.from(e.target.files);
+      selectedGalleryFiles = selectedGalleryFiles.concat(files.slice(0, 5 - selectedGalleryFiles.length));
+      // Show previews
+      const preview = document.getElementById('galleryPreview');
+      preview.innerHTML = selectedGalleryFiles.map((f, i) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(f);
+        return `<div class="gallery-item"><img src="" data-index="${i}" class="preview-img"><button type="button" class="delete-btn" onclick="removeGalleryFile(${i})">×</button></div>`;
+      }).join('');
+      // Load actual images
+      selectedGalleryFiles.forEach((f, i) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.querySelector(`[data-index="${i}"]`).src = e.target.result;
+        };
+        reader.readAsDataURL(f);
+      });
+    });
+
+    function removeGalleryFile(index) {
+      selectedGalleryFiles.splice(index, 1);
+      const preview = document.getElementById('galleryPreview');
+      preview.innerHTML = selectedGalleryFiles.map((f, i) => `
+        <div class="gallery-item"><img src="" data-index="${i}" class="preview-img"><button type="button" class="delete-btn" onclick="removeGalleryFile(${i})">×</button></div>
+      `).join('');
+      selectedGalleryFiles.forEach((f, i) => {
+        const reader = new FileReader();
+        reader.onload = (e) => { document.querySelector(`[data-index="${i}"]`).src = e.target.result; };
+        reader.readAsDataURL(f);
+      });
+    }
+
+    // Form submit
     document.getElementById('editForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
 
       const data = {};
       const fields = ['name', 'phone', 'email', 'address', 'city', 'neighborhood', 
-                      'description', 'schedule', 'website', 'maps_url'];
+                      'description', 'about', 'schedule', 'website', 'maps_url',
+                      'instagram', 'facebook'];
       
       fields.forEach(field => {
         const input = document.getElementById(field);
-        if (input && !input.disabled) {
-          const value = input.value.trim();
-          if (value) {
-            data[field] = value;
-          } else if (input.required) {
-            data[field] = value;
-          }
+        if (input && !input.disabled && input.value.trim()) {
+          data[field] = input.value.trim();
         }
       });
 
-      // Category
       const categorySelect = document.getElementById('category');
       if (!categorySelect.disabled && categorySelect.value) {
         data.category_id = parseInt(categorySelect.value);
       }
 
-      // Coordinates
       const lat = document.getElementById('latitude');
       const lng = document.getElementById('longitude');
-      if (lat && !lat.disabled && lat.value) {
-        data.latitude = parseFloat(lat.value);
-      }
-      if (lng && !lng.disabled && lng.value) {
-        data.longitude = parseFloat(lng.value);
-      }
+      if (lat.value) data.latitude = parseFloat(lat.value);
+      if (lng.value) data.longitude = parseFloat(lng.value);
 
       try {
+        let result;
         if (isOwner || isModeratorOrAdmin) {
-          await updateContact(contact.id, data);
+          result = await updateContact(contactId, data);
           document.getElementById('successMsg').textContent = '✅ Cambios guardados exitosamente';
         } else {
-          await editContact(contact.id, data);
+          result = await editContact(contactId, data);
           document.getElementById('successMsg').textContent = '✅ Cambios enviados. Pendientes de verificación.';
         }
         document.getElementById('successMsg').classList.remove('hidden');
         document.getElementById('errorMsg').classList.add('hidden');
+
+        // Upload new photo if selected
+        if (selectedPhoto && (isOwner || isModeratorOrAdmin)) {
+          await uploadContactImage(contactId, selectedPhoto);
+        }
+
+        // Upload gallery photos
+        for (const file of selectedGalleryFiles) {
+          await uploadGalleryPhoto(contactId, file);
+        }
+
+        // Save structured schedules if owner/moderator
+        if (isOwner || isModeratorOrAdmin) {
+          const schedules = getStructuredSchedules();
+          if (schedules.length > 0) {
+            await apiRequest(`/api/contacts/${contactId}/schedules`, {
+              method: 'PUT',
+              body: JSON.stringify(schedules)
+            });
+          }
+        }
+
+        // Reload to get updated data
+        setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
         document.getElementById('errorMsg').textContent = err.message;
         document.getElementById('errorMsg').classList.remove('hidden');
         document.getElementById('successMsg').classList.add('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar Cambios';
       }
     });
+
+    async function uploadGalleryPhoto(contactId, file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = getToken();
+      await fetch(`/api/contacts/${contactId}/photos`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+    }
 
     loadContact();
   </script>

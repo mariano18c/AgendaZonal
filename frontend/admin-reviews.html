@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Reseñas - Agenda de la zona</title>
+  <link rel="stylesheet" href="/css/output.css">
+  <link rel="manifest" href="/manifest.json">
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">⭐ Moderación de Reseñas</h1>
+    <div id="reviewsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+    <div id="pagination" class="mt-4"></div>
+  </main>
+  <script>
+    let currentPage = 1;
+    const itemsPerPage = 20;
+
+    async function loadPendingReviews(page = 1) {
+      currentPage = page;
+      const container = document.getElementById('reviewsContainer');
+      if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión como moderador</div>'; return; }
+      const user = getUser();
+      if (!user || !['moderator', 'admin'].includes(user.role)) { container.innerHTML = '<div class="text-center py-10 text-red-500">Requiere rol de moderador o admin</div>'; return; }
+      const skip = (page - 1) * itemsPerPage;
+      try {
+        const data = await apiRequest(`/api/admin/reviews/pending?skip=${skip}&limit=${itemsPerPage}`);
+        const { reviews, total } = data;
+        if (total === 0) { container.innerHTML = '<div class="bg-white rounded-lg shadow-sm border p-8 text-center"><div class="text-4xl mb-4">✅</div><p class="text-gray-600">No hay reseñas pendientes</p></div>'; document.getElementById('pagination').innerHTML = ''; return; }
+        container.innerHTML = `<p class="text-gray-600 mb-4">${total} reseña${total !== 1 ? 's' : ''} pendiente${total !== 1 ? 's' : ''}</p><div class="space-y-4">${reviews.map(r => renderReviewCard(r)).join('')}</div>`;
+        renderPagination('pagination', page, total, itemsPerPage, (p) => loadPendingReviews(p));
+      } catch (err) { container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`; }
+    }
+    function renderReviewCard(r) {
+      const s = (v) => escapeHtml(v || '');
+      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+      const date = r.created_at ? new Date(r.created_at).toLocaleDateString('es-AR') : '';
+      return `<div class="bg-white rounded-lg shadow-sm border p-5" id="review-${r.id}">
+        <div class="flex justify-between items-start mb-3"><div><div class="font-semibold text-gray-800">${s(r.contact_name)}</div><div class="text-sm text-gray-500">Por: ${s(r.username)} · ${date}</div></div><span class="text-yellow-500 text-lg">${stars}</span></div>
+        ${r.comment ? `<p class="text-gray-700 mb-3">${s(r.comment)}</p>` : ''}
+        ${r.photo_path ? `<img src="${s(r.photo_path)}" class="w-32 h-32 object-cover rounded mb-3">` : ''}
+        <div class="flex gap-2">
+          <button onclick="approveReview(${r.id})" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm">✓ Aprobar</button>
+          <button onclick="rejectReview(${r.id})" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition text-sm">✕ Rechazar</button>
+          <a href="/profile?id=${r.contact_id}" class="text-blue-600 hover:underline self-center text-sm ml-2">Ver contacto →</a>
+        </div></div>`;
+    }
+    async function approveReview(id) { try { await apiRequest(`/api/admin/reviews/${id}/approve`, { method: 'POST' }); const card = document.getElementById(`review-${id}`); if (card) card.remove(); loadPendingReviews(); } catch (err) { alert('Error: ' + err.message); } }
+    async function rejectReview(id) { try { await apiRequest(`/api/admin/reviews/${id}/reject`, { method: 'POST' }); const card = document.getElementById(`review-${id}`); if (card) card.remove(); loadPendingReviews(); } catch (err) { alert('Error: ' + err.message); } }
+    loadPendingReviews();
+  </script>
+</body>
+</html>

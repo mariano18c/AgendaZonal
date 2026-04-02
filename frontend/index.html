@@ -26,7 +26,7 @@
           <input
             type="text"
             id="searchInput"
-            placeholder="Buscar por nombre, ciudad o barrio..."
+            placeholder="Buscar por nombre, teléfono o ciudad..."
             class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
           <button
@@ -48,6 +48,16 @@
       <h2 class="text-xl font-semibold text-gray-800 mb-4">Últimos registros</h2>
       <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="text-center text-gray-500 col-span-full">Cargando contactos...</div>
+      </div>
+    </div>
+
+    <div class="mt-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-gray-800">🏥 Utilidades del Barrio</h2>
+        <a href="/admin/utilities" class="text-blue-600 hover:underline text-sm">Ver todas →</a>
+      </div>
+      <div id="utilitiesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="text-center text-gray-500 col-span-full">Cargando utilidades...</div>
       </div>
     </div>
   </main>
@@ -96,7 +106,7 @@
           return;
         }
         grid.innerHTML = contacts.slice(0, 6).map(c => `
-          <a href="/search?contact=${c.id}"
+          <a href="/profile?id=${c.id}"
              class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
             <div class="font-semibold text-gray-800">${c.name}</div>
             <div class="text-blue-600 mt-1">${c.phone}</div>
@@ -121,8 +131,31 @@
       return emojis[code] || '📌';
     }
 
+    async function loadUtilities() {
+      const grid = document.getElementById('utilitiesGrid');
+      try {
+        const data = await apiRequest('/api/utilities');
+        if (!data || data.length === 0) {
+          grid.innerHTML = '<div class="text-gray-500 col-span-full">No hay utilidades registradas</div>';
+          return;
+        }
+        const typeLabels = { farmacia_turno: '💊', emergencia: '🚨', otro: '📋' };
+        grid.innerHTML = data.slice(0, 6).map(u => `
+          <div class="bg-white rounded-lg shadow-sm border p-4">
+            <div class="font-semibold text-gray-800">${typeLabels[u.type] || '📋'} ${escapeHtml(u.name)}</div>
+            ${u.phone ? `<div class="text-blue-600 mt-1"><a href="tel:${escapeHtml(u.phone)}">📞 ${escapeHtml(u.phone)}</a></div>` : ''}
+            ${u.address ? `<div class="text-gray-500 text-sm mt-1">📍 ${escapeHtml(u.address)}</div>` : ''}
+            ${u.schedule ? `<div class="text-gray-500 text-sm mt-1">🕐 ${escapeHtml(u.schedule)}</div>` : ''}
+          </div>
+        `).join('');
+      } catch (err) {
+        grid.innerHTML = '<div class="text-gray-500 col-span-full">Utilidades no disponibles</div>';
+      }
+    }
+
     loadCategories();
     loadRecentContacts();
+    loadUtilities();
   </script>
 </body>
 </html>

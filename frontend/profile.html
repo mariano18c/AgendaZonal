@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perfil - Agenda de la zona</title>
+  <link rel="stylesheet" href="/css/output.css">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/geo.js"></script>
+  <style>
+    #map { height: 250px; border-radius: 0.5rem; }
+    .carousel-wrapper { position: relative; overflow: hidden; border-radius: 0.5rem; }
+    .carousel-track { display: flex; transition: transform 0.35s ease; will-change: transform; }
+    .carousel-slide { min-width: 100%; position: relative; }
+    .carousel-slide img { width: 100%; height: 16rem; object-fit: cover; display: block; }
+    .carousel-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(0,0,0,0.45); color: #fff; border: none; border-radius: 50%;
+      width: 36px; height: 36px; font-size: 18px; cursor: pointer; z-index: 10;
+      display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+    }
+    .carousel-btn:hover { background: rgba(0,0,0,0.7); }
+    .carousel-btn-prev { left: 8px; }
+    .carousel-btn-next { right: 8px; }
+    .carousel-dots {
+      display: flex; justify-content: center; gap: 6px;
+      position: absolute; bottom: 10px; left: 0; right: 0; z-index: 10;
+    }
+    .carousel-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.5); border: none; cursor: pointer;
+      transition: background 0.2s, transform 0.2s; padding: 0;
+    }
+    .carousel-dot.active { background: #fff; transform: scale(1.3); }
+    .carousel-counter {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(0,0,0,0.5); color: #fff; font-size: 12px;
+      padding: 2px 8px; border-radius: 10px; z-index: 10;
+    }
+    .lightbox-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+      z-index: 9999; display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .lightbox-overlay.open { opacity: 1; pointer-events: auto; }
+    .lightbox-overlay img {
+      max-width: 92vw; max-height: 88vh; object-fit: contain;
+      border-radius: 4px; user-select: none;
+    }
+    .lightbox-close {
+      position: absolute; top: 16px; right: 20px;
+      color: #fff; font-size: 32px; cursor: pointer; z-index: 10;
+      background: none; border: none; line-height: 1; opacity: 0.8;
+    }
+    .lightbox-close:hover { opacity: 1; }
+    .lightbox-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,0.15); color: #fff; border: none;
+      border-radius: 50%; width: 48px; height: 48px; font-size: 22px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s; z-index: 10;
+    }
+    .lightbox-btn:hover { background: rgba(255,255,255,0.3); }
+    .lightbox-btn-prev { left: 16px; }
+    .lightbox-btn-next { right: 16px; }
+    .lightbox-counter {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      color: rgba(255,255,255,0.7); font-size: 14px; z-index: 10;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-4 py-8">
+    <div id="profileContent">
+      <div class="text-center py-10 text-gray-500">Cargando...</div>
+    </div>
+  </main>
+
+  <script>
+    function getCategoryEmoji(code) {
+      const emojis = {
+        100: '🔧', 101: '🔥', 102: '⚡', 103: '✂️', 104: '🧱',
+        105: '🖌️', 106: '🪚', 107: '🛒', 108: '🥩', 109: '🥬',
+        110: '🥖', 111: '👕', 112: '💊', 113: '📚', 114: '🍺',
+        115: '🍽️', 116: '🎶', 117: '🎁', 118: '🐾', 119: '🔩',
+        120: '🏪', 121: '🧸', 122: '📦', 123: '❤️', 124: '🏠',
+        999: '📌'
+      };
+      return emojis[code] || '📌';
+    }
+
+    async function loadProfile() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      if (!id) {
+        document.getElementById('profileContent').innerHTML =
+          '<div class="text-center py-10 text-red-500">No se especificó un proveedor</div>';
+        return;
+      }
+
+      try {
+        const [contact, categories] = await Promise.all([getContact(id), getCategories()]);
+        const cat = categories.find(c => c.id === contact.category_id);
+        const catName = cat ? escapeHtml(cat.name) : '';
+        const catEmoji = cat ? getCategoryEmoji(cat.code) : '';
+        const s = (v) => escapeHtml(v || '');
+
+        let verBadge = '';
+        if (contact.verification_level >= 3) verBadge = '<span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-sm rounded-full font-medium">⭐ Premium</span>';
+        else if (contact.verification_level >= 2) verBadge = '<span class="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full font-medium">✓ Documentado</span>';
+        else if (contact.verification_level >= 1) verBadge = '<span class="px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded-full font-medium">✓ Verificado</span>';
+
+        let deletionBadge = '';
+        if (contact.status === 'flagged') {
+          deletionBadge = '<span class="px-3 py-1 bg-red-100 text-red-700 text-sm rounded-full font-medium">🚩 Pendiente de eliminación</span>';
+        }
+
+        let ratingHtml = '<span class="text-gray-400 text-sm">Sin reseñas</span>';
+        if (contact.avg_rating > 0) {
+          const fullStars = Math.round(contact.avg_rating);
+          const stars = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
+          ratingHtml = `
+            <div class="flex items-center gap-2">
+              <span class="text-2xl text-yellow-500">${stars}</span>
+              <span class="text-lg font-bold text-gray-800">${contact.avg_rating.toFixed(1)}</span>
+              <span class="text-gray-500 text-sm">(${contact.review_count} reseñas)</span>
+            </div>`;
+        }
+
+        let whatsappHtml = '';
+        if (contact.phone) {
+          const cleanPhone = contact.phone.replace(/\D/g, '');
+          const waMsg = encodeURIComponent(`Hola ${contact.name}, te encontré en AgendaZonal y quería consultar sobre tus servicios.`);
+          whatsappHtml = `
+            <a href="https://wa.me/${cleanPhone}?text=${waMsg}" target="_blank" rel="noopener"
+               onclick="registerLead(${contact.id})"
+               class="inline-flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition font-medium">
+              💬 Contactar por WhatsApp
+            </a>`;
+        }
+
+        document.getElementById('profileContent').innerHTML = `
+          <div class="text-sm text-gray-500 mb-4">
+            <a href="/" class="hover:text-blue-600">Inicio</a>
+            ${cat ? ` › <a href="/search?category=${contact.category_id}" class="hover:text-blue-600">${catName}</a>` : ''}
+            ${contact.city ? ` › <span class="hover:text-blue-600">${s(contact.city)}</span>` : ''}
+            › <span class="text-gray-700">${s(contact.name)}</span>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 flex-wrap">
+                  <h1 class="text-2xl font-bold text-gray-900">${s(contact.name)}</h1>
+                  ${verBadge}
+                  ${deletionBadge}
+                </div>
+                ${cat ? `<div class="text-blue-600 mt-1">${catEmoji} ${catName}</div>` : ''}
+                <div class="mt-2">${ratingHtml}</div>
+              </div>
+              <button onclick="shareContact(${contact.id}, '${s(contact.name).replace(/'/g, "\\'")}')" class="text-gray-500 hover:text-blue-600 p-2" title="Compartir">📤 Compartir</button>
+            </div>
+            <div id="photoGallery" class="mt-4"></div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+              <h2 class="font-semibold text-gray-800 mb-4">📍 Información</h2>
+              <div class="space-y-3">
+                <div class="flex items-center gap-3"><span class="text-gray-500 text-lg">📞</span><a href="tel:${s(contact.phone)}" class="text-blue-600 hover:underline">${s(contact.phone)}</a></div>
+                ${contact.email ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">✉️</span><a href="mailto:${s(contact.email)}" class="text-blue-600 hover:underline">${s(contact.email)}</a></div>` : ''}
+                ${contact.schedule ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">🕐</span><span>${s(contact.schedule)}</span></div>` : ''}
+                ${contact.address ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">📍</span><span>${s(contact.address)}</span></div>` : ''}
+                ${contact.city ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">🏙️</span><span>${s(contact.city)}${contact.neighborhood ? ' - ' + s(contact.neighborhood) : ''}</span></div>` : ''}
+                ${contact.website ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">🌐</span><a href="${s(contact.website)}" target="_blank" class="text-blue-600 hover:underline text-sm break-all">${s(contact.website)}</a></div>` : ''}
+                ${contact.instagram ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">📷</span><a href="${s(contact.instagram.startsWith('http') ? contact.instagram : 'https://instagram.com/' + contact.instagram.replace('@',''))}" target="_blank" class="text-blue-600 hover:underline text-sm">${s(contact.instagram)}</a></div>` : ''}
+                ${contact.facebook ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">👤</span><a href="${s(contact.facebook)}" target="_blank" class="text-blue-600 hover:underline text-sm">Facebook</a></div>` : ''}
+                ${contact.maps_url ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">🗺️</span><a href="${s(contact.maps_url)}" target="_blank" class="text-blue-600 hover:underline">Ver en Google Maps</a></div>` : ''}
+                ${contact.distance_km != null ? `<div class="flex items-center gap-3"><span class="text-gray-500 text-lg">📏</span><span>${contact.distance_km} km de tu ubicación</span></div>` : ''}
+                ${contact.description ? `<div class="pt-2 border-t"><p class="text-gray-600 text-sm">${s(contact.description)}</p></div>` : ''}
+                ${contact.about ? `<div class="pt-2"><p class="text-gray-600 text-sm">${s(contact.about)}</p></div>` : ''}
+              </div>
+            </div>
+            ${contact.latitude && contact.longitude ? `
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+              <h2 class="font-semibold text-gray-800 mb-4">🗺️ Ubicación</h2>
+              <div id="map"></div>
+            </div>` : ''}
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex flex-wrap gap-3">
+              ${whatsappHtml}
+              <a href="tel:${s(contact.phone)}" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium">📞 Llamar</a>
+            </div>
+          </div>
+
+          <div id="offersSection" class="hidden bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="font-semibold text-gray-800 mb-4">🏷️ Ofertas</h2>
+            <div id="offersContent"></div>
+          </div>
+
+          <div id="relatedSection" class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="font-semibold text-gray-800 mb-4">📍 Servicios similares cerca</h2>
+            <div id="relatedContent"><p class="text-gray-400 text-sm">Buscando...</p></div>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="font-semibold text-gray-800 mb-4">⭐ Reseñas</h2>
+            <div id="reviewsSection"><p class="text-gray-400 text-sm">Cargando reseñas...</p></div>
+          </div>
+
+          <div id="reviewFormContainer" class="hidden bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h3 class="font-semibold text-gray-800 mb-3">Dejá tu reseña</h3>
+            <form id="reviewForm" onsubmit="submitReview(event, ${contact.id})">
+              <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">Calificación</label>
+                <div id="starRating" class="flex gap-1 text-2xl cursor-pointer">
+                  <span onclick="setRating(1)" data-star="1" class="text-gray-300 hover:text-yellow-400">★</span>
+                  <span onclick="setRating(2)" data-star="2" class="text-gray-300 hover:text-yellow-400">★</span>
+                  <span onclick="setRating(3)" data-star="3" class="text-gray-300 hover:text-yellow-400">★</span>
+                  <span onclick="setRating(4)" data-star="4" class="text-gray-300 hover:text-yellow-400">★</span>
+                  <span onclick="setRating(5)" data-star="5" class="text-gray-300 hover:text-yellow-400">★</span>
+                </div>
+                <input type="hidden" id="reviewRating" value="0">
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm text-gray-600 mb-1">Comentario (opcional)</label>
+                <textarea id="reviewComment" maxlength="500" rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="Contá tu experiencia..."></textarea>
+              </div>
+              <button type="submit" id="submitReviewBtn"
+                class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">Enviar reseña</button>
+              <div id="reviewMessage" class="mt-2 text-sm"></div>
+            </form>
+          </div>
+
+          <div class="text-center">
+            <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
+            ${isLoggedIn() ? ` · <a href="/edit?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>` : ''}
+            ${isLoggedIn() ? ` · <a href="/history?id=${contact.id}" class="text-gray-600 hover:underline"> Historial</a>` : ''}
+            ${isLoggedIn() ? ` · ${renderProfileDeletionButtons(contact)}` : ''}
+            ${isLoggedIn() && getUser().id !== contact.user_id ? ` · <a onclick="openReportModal(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Reportar</a>` : ''}
+          </div>
+        `;
+
+        if (contact.latitude && contact.longitude) {
+          setTimeout(() => {
+            const miniMap = initMap('map', contact.latitude, contact.longitude, 15);
+            L.marker([contact.latitude, contact.longitude]).addTo(miniMap).bindPopup(s(contact.name));
+          }, 100);
+        }
+
+        loadReviews(contact.id, contact.user_id);
+        loadOffers(contact.id);
+        loadGallery(contact.id, contact.photo_path);
+        loadRelated(contact.id);
+        loadScheduleStatus(contact.id);
+
+        const currentUser = getUser();
+        if (isLoggedIn() && currentUser && currentUser.id !== contact.user_id) {
+          document.getElementById('reviewFormContainer').classList.remove('hidden');
+        }
+
+        document.title = `${contact.name} - Agenda de la zona`;
+      } catch (err) {
+        document.getElementById('profileContent').innerHTML =
+          `<div class="text-center py-10 text-red-500">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function registerLead(contactId) {
+      fetch(`${API_URL}/api/contacts/${contactId}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'whatsapp' }),
+      }).catch(() => {});
+    }
+
+    function isProfileAdmin() {
+      const user = getUser();
+      return user && (user.role === 'admin' || user.role === 'moderator');
+    }
+
+    function isProfileOwner(contact) {
+      const user = getUser();
+      return user && contact.user_id === user.id;
+    }
+
+    function renderProfileDeletionButtons(contact) {
+      const user = getUser();
+      if (!user) return '';
+      const isAdminUser = isProfileAdmin();
+      const isContactOwner = isProfileOwner(contact);
+      const isFlagged = contact.status === 'flagged';
+      let buttons = '';
+      if (isFlagged) {
+        if (isContactOwner) buttons += `<a onclick="profileCancelDeletion(${contact.id})" class="text-green-600 hover:underline cursor-pointer"> Cancelar eliminación</a>`;
+        if (isAdminUser) buttons += `<a onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar definitivamente</a>`;
+      } else {
+        if (isContactOwner) buttons += `<a onclick="profileRequestDeletion(${contact.id})" class="text-red-600 hover:underline cursor-pointer">Solicitar eliminación</a>`;
+        if (isAdminUser) buttons += `<a onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar</a>`;
+      }
+      return buttons;
+    }
+
+    async function profileRequestDeletion(contactId) {
+      if (!confirm('¿Solicitar eliminación de este contacto?')) return;
+      try { await requestContactDeletion(contactId); alert('Solicitud enviada.'); window.location.reload(); }
+      catch (err) { alert('Error: ' + err.message); }
+    }
+
+    async function profileCancelDeletion(contactId) {
+      try { await cancelContactDeletion(contactId); alert('Solicitud cancelada'); window.location.reload(); }
+      catch (err) { alert('Error: ' + err.message); }
+    }
+
+    async function profileDeleteContact(contactId) {
+      if (!confirm('¿Eliminar este contacto definitivamente?')) return;
+      try { await deleteContact(contactId); alert('Contacto eliminado'); window.location.href = '/search'; }
+      catch (err) { alert('Error: ' + err.message); }
+    }
+
+    let selectedRating = 0;
+
+    async function loadOffers(contactId) {
+      const section = document.getElementById('offersSection');
+      const content = document.getElementById('offersContent');
+      try {
+        const offers = await apiRequest(`/api/contacts/${contactId}/offers`);
+        if (offers.length === 0) return;
+        section.classList.remove('hidden');
+        content.innerHTML = offers.map(o => {
+          const s = (v) => escapeHtml(v || '');
+          const expiresAt = new Date(o.expires_at);
+          const now = new Date();
+          const diffMs = expiresAt - now;
+          const diffHours = Math.floor(diffMs / 3600000);
+          const diffDays = Math.floor(diffMs / 86400000);
+          let countdown = '';
+          if (diffDays > 1) countdown = `Expira en ${diffDays} días`;
+          else if (diffHours > 1) countdown = `Expira en ${diffHours} horas`;
+          else countdown = '⏰ ¡Expira pronto!';
+          return `
+            <div class="border rounded-lg p-4 mb-3 ${o.discount_pct ? 'bg-green-50 border-green-200' : ''}">
+              <div class="flex justify-between items-start">
+                <div><span class="font-medium text-gray-800">${s(o.title)}</span>${o.discount_pct ? `<span class="ml-2 bg-green-600 text-white text-xs px-2 py-0.5 rounded-full">${o.discount_pct}% OFF</span>` : ''}</div>
+                <span class="text-xs text-orange-600 font-medium">${countdown}</span>
+              </div>
+              ${o.description ? `<p class="text-gray-600 text-sm mt-1">${s(o.description)}</p>` : ''}
+            </div>`;
+        }).join('');
+      } catch {}
+    }
+
+    function setRating(n) {
+      selectedRating = n;
+      document.getElementById('reviewRating').value = n;
+      document.querySelectorAll('#starRating span').forEach((star, i) => {
+        star.classList.toggle('text-yellow-400', i < n);
+        star.classList.toggle('text-gray-300', i >= n);
+      });
+    }
+
+    async function loadReviews(contactId, contactOwnerId) {
+      const section = document.getElementById('reviewsSection');
+      try {
+        const data = await apiRequest(`/api/contacts/${contactId}/reviews`);
+        const { reviews, total, avg_rating } = data;
+        if (total === 0) {
+          section.innerHTML = '<p class="text-gray-400 text-sm">Aún no hay reseñas aprobadas. ¡Sé el primero!</p>';
+          return;
+        }
+        const starsHtml = avg_rating > 0
+          ? `<span class="text-yellow-500">${'★'.repeat(Math.round(avg_rating))}${'☆'.repeat(5 - Math.round(avg_rating))}</span> <span class="text-sm text-gray-500">${avg_rating.toFixed(1)} (${total})</span>`
+          : '';
+        const currentUser = getUser();
+        const isOwner = currentUser && currentUser.id === contactOwnerId;
+        section.innerHTML = `
+          <div class="mb-4">${starsHtml}</div>
+          <div class="space-y-4">
+            ${reviews.map(r => {
+              const s = (v) => escapeHtml(v || '');
+              const rStars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+              const date = r.created_at ? new Date(r.created_at).toLocaleDateString('es-AR') : '';
+              const replyDate = r.reply_at ? new Date(r.reply_at).toLocaleDateString('es-AR') : '';
+              return `
+                <div class="border-b pb-3 last:border-0">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="font-medium text-sm text-gray-700">${s(r.username)}</span>
+                    <span class="text-yellow-500 text-sm">${rStars}</span>
+                  </div>
+                  ${r.comment ? `<p class="text-gray-600 text-sm">${s(r.comment)}</p>` : ''}
+                  <span class="text-gray-400 text-xs">${date}</span>
+                  ${r.reply_text ? `
+                    <div class="mt-2 ml-4 pl-3 border-l-2 border-blue-300 bg-blue-50 rounded-r-lg p-2">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="font-medium text-sm text-blue-700">🏪 Respuesta del propietario</span>
+                        ${replyDate ? `<span class="text-gray-400 text-xs">${replyDate}</span>` : ''}
+                      </div>
+                      <p class="text-gray-600 text-sm">${s(r.reply_text)}</p>
+                    </div>` : ''}
+                  ${isOwner && !r.reply_text ? `
+                    <div class="mt-2 ml-4">
+                      <button onclick="showReplyForm(${r.id})" class="text-blue-600 text-xs hover:underline">↩️ Responder</button>
+                      <div id="replyForm_${r.id}" class="hidden mt-2">
+                        <textarea id="replyText_${r.id}" maxlength="500" rows="2"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                          placeholder="Escribí tu respuesta..."></textarea>
+                        <div class="flex gap-2 mt-1">
+                          <button onclick="submitReply(${r.id})" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition text-xs">Enviar</button>
+                          <button onclick="hideReplyForm(${r.id})" class="text-gray-500 px-3 py-1 text-xs hover:underline">Cancelar</button>
+                        </div>
+                        <div id="replyMsg_${r.id}" class="mt-1 text-xs"></div>
+                      </div>
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+          </div>`;
+      } catch (err) {
+        section.innerHTML = `<p class="text-gray-400 text-sm">No se pudieron cargar las reseñas</p>`;
+      }
+    }
+
+    function showReplyForm(reviewId) { document.getElementById(`replyForm_${reviewId}`).classList.remove('hidden'); }
+    function hideReplyForm(reviewId) { document.getElementById(`replyForm_${reviewId}`).classList.add('hidden'); }
+
+    async function submitReply(reviewId) {
+      const text = document.getElementById(`replyText_${reviewId}`).value.trim();
+      const msgEl = document.getElementById(`replyMsg_${reviewId}`);
+      if (!text) { msgEl.innerHTML = '<span class="text-red-600">Escribí una respuesta</span>'; return; }
+      try {
+        await replyToReview(reviewId, text);
+        msgEl.innerHTML = '<span class="text-green-600">✓ Respuesta enviada</span>';
+        const params = new URLSearchParams(window.location.search);
+        const contactId = parseInt(params.get('id'));
+        const contact = await getContact(contactId);
+        setTimeout(() => loadReviews(contactId, contact.user_id), 1000);
+      } catch (err) { msgEl.innerHTML = `<span class="text-red-600">${escapeHtml(err.message)}</span>`; }
+    }
+
+    async function submitReview(e, contactId) {
+      e.preventDefault();
+      const rating = selectedRating;
+      const comment = document.getElementById('reviewComment').value.trim();
+      const msgEl = document.getElementById('reviewMessage');
+      const btn = document.getElementById('submitReviewBtn');
+      if (rating < 1 || rating > 5) { msgEl.innerHTML = '<span class="text-red-600">Seleccioná una calificación</span>'; return; }
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        await apiRequest(`/api/contacts/${contactId}/reviews`, { method: 'POST', body: JSON.stringify({ rating, comment: comment || null }) });
+        msgEl.innerHTML = '<span class="text-green-600">✓ Reseña enviada. Será visible una vez aprobada.</span>';
+        document.getElementById('reviewForm').reset(); setRating(0);
+      } catch (err) { msgEl.innerHTML = `<span class="text-red-600">${escapeHtml(err.message)}</span>`; }
+      finally { btn.disabled = false; btn.textContent = 'Enviar reseña'; }
+    }
+
+    function shareContact(id, name) {
+      const url = window.location.origin + '/profile?id=' + id;
+      const title = name + ' - AgendaZonal';
+      const text = `Mirá ${name} en AgendaZonal`;
+      if (navigator.share) { navigator.share({ title, text, url }).catch(() => {}); }
+      else { navigator.clipboard.writeText(url).then(() => { alert('Link copiado al portapapeles'); }).catch(() => { window.open(`https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`, '_blank'); }); }
+    }
+
+    let _carouselPhotos = [];
+    let _carouselIndex = 0;
+
+    async function loadGallery(contactId, mainPhotoPath) {
+      try {
+        const photos = await apiRequest(`/api/contacts/${contactId}/photos`);
+        const slides = [];
+        if (mainPhotoPath) slides.push({ photo_path: mainPhotoPath, caption: 'Foto principal' });
+        photos.forEach(p => slides.push(p));
+        if (slides.length === 0) return;
+        _carouselPhotos = slides;
+        _carouselIndex = 0;
+        const gallery = document.getElementById('photoGallery');
+        const showNav = slides.length > 1;
+        gallery.innerHTML = `
+          <div class="carousel-wrapper" role="region" aria-label="Galería de fotos">
+            <div class="carousel-track">
+              ${slides.map((p, i) => `
+                <div class="carousel-slide" role="group" aria-label="Foto ${i + 1} de ${slides.length}">
+                  <img src="${escapeHtml(p.photo_path)}" alt="${escapeHtml(p.caption || '')}"
+                       loading="${i === 0 ? 'eager' : 'lazy'}"
+                       class="cursor-pointer" onclick="openLightbox(${i})">
+                </div>
+              `).join('')}
+            </div>
+            ${showNav ? `
+              <button class="carousel-btn carousel-btn-prev" onclick="carouselGo(-1)" aria-label="Foto anterior">‹</button>
+              <button class="carousel-btn carousel-btn-next" onclick="carouselGo(1)" aria-label="Foto siguiente">›</button>
+              <div class="carousel-dots">
+                ${slides.map((_, i) => `
+                  <button class="carousel-dot ${i === 0 ? 'active' : ''}"
+                          onclick="carouselTo(${i})" aria-label="Ir a foto ${i + 1}"></button>
+                `).join('')}
+              </div>
+              <div class="carousel-counter"><span id="carouselCount">1</span> / ${slides.length}</div>
+            ` : ''}
+          </div>`;
+        if (showNav) {
+          const wrapper = gallery.querySelector('.carousel-wrapper');
+          let startX = 0, startY = 0, isDragging = false;
+          wrapper.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; isDragging = true; }, { passive: true });
+          wrapper.addEventListener('touchmove', e => { if (!isDragging) return; const dx = e.touches[0].clientX - startX; const dy = e.touches[0].clientY - startY; if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) e.preventDefault(); }, { passive: false });
+          wrapper.addEventListener('touchend', e => { if (!isDragging) return; isDragging = false; const dx = e.changedTouches[0].clientX - startX; if (Math.abs(dx) > 50) carouselGo(dx < 0 ? 1 : -1); }, { passive: true });
+        }
+      } catch {}
+    }
+
+    function carouselGo(dir) {
+      const total = _carouselPhotos.length;
+      if (total <= 1) return;
+      _carouselIndex = (_carouselIndex + dir + total) % total;
+      carouselUpdate();
+    }
+    function carouselTo(index) { _carouselIndex = index; carouselUpdate(); }
+    function carouselUpdate() {
+      const track = document.querySelector('.carousel-track');
+      if (!track) return;
+      track.style.transform = `translateX(-${_carouselIndex * 100}%)`;
+      document.querySelectorAll('.carousel-dot').forEach((dot, i) => { dot.classList.toggle('active', i === _carouselIndex); });
+      const counter = document.getElementById('carouselCount');
+      if (counter) counter.textContent = _carouselIndex + 1;
+    }
+
+    document.addEventListener('keydown', e => {
+      const lb = document.querySelector('.lightbox-overlay.open');
+      if (lb) { if (e.key === 'Escape') closeLightbox(); else if (e.key === 'ArrowLeft') lightboxGo(-1); else if (e.key === 'ArrowRight') lightboxGo(1); return; }
+      if (e.key === 'ArrowLeft') carouselGo(-1);
+      else if (e.key === 'ArrowRight') carouselGo(1);
+    });
+
+    function openLightbox(index) {
+      _carouselIndex = index; carouselUpdate();
+      let overlay = document.querySelector('.lightbox-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'lightbox-overlay';
+        overlay.innerHTML = `
+          <button class="lightbox-close" onclick="closeLightbox()" aria-label="Cerrar">&times;</button>
+          <button class="lightbox-btn lightbox-btn-prev" onclick="lightboxGo(-1)" aria-label="Foto anterior">‹</button>
+          <img id="lightboxImg" src="" alt="" draggable="false">
+          <button class="lightbox-btn lightbox-btn-next" onclick="lightboxGo(1)" aria-label="Foto siguiente">›</button>
+          <div class="lightbox-counter"><span id="lightboxCount">1</span> / <span id="lightboxTotal">1</span></div>`;
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeLightbox(); });
+        document.body.appendChild(overlay);
+      }
+      lightboxUpdate();
+      requestAnimationFrame(() => overlay.classList.add('open'));
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+      const overlay = document.querySelector('.lightbox-overlay');
+      if (overlay) overlay.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function lightboxGo(dir) {
+      const total = _carouselPhotos.length;
+      if (total <= 1) return;
+      _carouselIndex = (_carouselIndex + dir + total) % total;
+      lightboxUpdate(); carouselUpdate();
+    }
+
+    function lightboxUpdate() {
+      const img = document.getElementById('lightboxImg');
+      const count = document.getElementById('lightboxCount');
+      const total = document.getElementById('lightboxTotal');
+      if (!img || !_carouselPhotos[_carouselIndex]) return;
+      img.src = _carouselPhotos[_carouselIndex].photo_path;
+      img.alt = _carouselPhotos[_carouselIndex].caption || '';
+      if (count) count.textContent = _carouselIndex + 1;
+      if (total) total.textContent = _carouselPhotos.length;
+    }
+
+    async function loadRelated(contactId) {
+      const section = document.getElementById('relatedSection');
+      const content = document.getElementById('relatedContent');
+      try {
+        const related = await apiRequest(`/api/contacts/${contactId}/related?radius_km=10&limit=5`);
+        if (related.length === 0) { section.classList.add('hidden'); return; }
+        content.innerHTML = related.map(r => {
+          const s2 = (v) => escapeHtml(v || '');
+          const dist = r.distance_km != null ? `<span class="text-sm text-gray-400">${r.distance_km} km</span>` : '';
+          const stars = r.avg_rating > 0 ? `<span class="text-yellow-500 text-sm">${'★'.repeat(Math.round(r.avg_rating))}</span>` : '';
+          return `<a href="/profile?id=${r.id}" class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 border-b last:border-0"><div><div class="font-medium text-gray-800">${s2(r.name)}</div><div class="text-sm text-gray-500">${s2(r.city)} ${stars}</div></div>${dist}</a>`;
+        }).join('');
+      } catch { section.classList.add('hidden'); }
+    }
+
+    async function loadScheduleStatus(contactId) {
+      try {
+        const schedules = await apiRequest(`/api/contacts/${contactId}/schedules`);
+        if (schedules.length === 0) return;
+        const now = new Date();
+        const dayOfWeek = (now.getDay() + 6) % 7;
+        const today = schedules.find(s => s.day_of_week === dayOfWeek);
+        if (!today) return;
+        const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        let statusHtml = '';
+        if (today.is_closed) statusHtml = '<span class="text-red-600 text-sm font-medium">🔴 Cerrado hoy</span>';
+        else if (currentTime >= today.open_time && currentTime < today.close_time) statusHtml = `<span class="text-green-600 text-sm font-medium">🟢 Abierto ahora (cierra a las ${today.close_time})</span>`;
+        else statusHtml = `<span class="text-red-600 text-sm font-medium">🔴 Cerrado (abre ${today.open_time})</span>`;
+        const infoSection = document.querySelector('#profileContent .space-y-3');
+        if (infoSection) { const div = document.createElement('div'); div.className = 'flex items-center gap-3'; div.innerHTML = statusHtml; infoSection.appendChild(div); }
+      } catch {}
+    }
+
+    loadProfile();
+
+    // Report modal
+    let reportContactId = null;
+
+    function openReportModal(contactId) {
+      reportContactId = contactId;
+      document.getElementById('reportModal').classList.remove('hidden');
+      document.getElementById('reportModal').classList.add('flex');
+      document.getElementById('reportReason').value = '';
+      document.getElementById('reportDetails').value = '';
+      document.getElementById('reportError').textContent = '';
+    }
+
+    function closeReportModal() {
+      document.getElementById('reportModal').classList.add('hidden');
+      document.getElementById('reportModal').classList.remove('flex');
+      reportContactId = null;
+    }
+
+    async function submitReport() {
+      const reason = document.getElementById('reportReason').value;
+      const details = document.getElementById('reportDetails').value.trim();
+      const errorEl = document.getElementById('reportError');
+      const btn = document.getElementById('reportSubmitBtn');
+
+      if (!reason) {
+        errorEl.textContent = 'Seleccioná un motivo';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      try {
+        await reportContact(reportContactId, reason, details);
+        closeReportModal();
+        alert('Reporte enviado. Gracias por tu ayuda.');
+        // Hide report button after successful report
+        const reportLink = document.querySelector('[onclick*="openReportModal"]');
+        if (reportLink) {
+          reportLink.textContent = '✓ Reportado';
+          reportLink.classList.remove('text-red-600', 'cursor-pointer');
+          reportLink.classList.add('text-gray-400');
+          reportLink.removeAttribute('onclick');
+        }
+      } catch (err) {
+        if (err.message.includes('409')) {
+          errorEl.textContent = 'Ya reportaste este contacto';
+        } else {
+          errorEl.textContent = err.message;
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enviar reporte';
+      }
+    }
+  </script>
+
+  <!-- Report Modal -->
+  <div id="reportModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">Reportar proveedor</h3>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Motivo *</label>
+        <select id="reportReason" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <option value="">Seleccionar motivo</option>
+          <option value="spam">Spam o publicidad no deseada</option>
+          <option value="falso">Información falsa o engañosa</option>
+          <option value="inapropiado">Contenido inapropiado</option>
+          <option value="cerrado">Negocio cerrado permanentemente</option>
+        </select>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Detalles (opcional)</label>
+        <textarea id="reportDetails" rows="3" maxlength="500"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+          placeholder="Contanos más detalles..."></textarea>
+      </div>
+      <div id="reportError" class="text-red-600 text-sm mb-4"></div>
+      <div class="flex gap-3 justify-end">
+        <button onclick="closeReportModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition">Cancelar</button>
+        <button id="reportSubmitBtn" onclick="submitReport()" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Enviar reporte</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

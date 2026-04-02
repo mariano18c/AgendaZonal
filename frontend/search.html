@@ -5,9 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buscar - Agenda de la zona</title>
   <link rel="stylesheet" href="/css/output.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <link rel="manifest" href="/manifest.json">
-  <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/geo.js"></script>
+  <script src="/js/app.js"></script>
+  <style>
+    #searchMap { height: 400px; border-radius: 0.5rem; z-index: 1; }
+    .search-tab.active { background-color: #2563eb; color: white; }
+    .search-tab { transition: all 0.2s; }
+  </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <nav class="bg-white shadow-sm border-b">
@@ -18,12 +29,23 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <div class="mb-8">
-      <div class="flex gap-2 max-w-md">
+    <!-- Búsqueda Tabs -->
+    <div class="mb-6">
+      <div class="flex gap-2 mb-4">
+        <button onclick="switchTab('text')" id="tab-text" class="search-tab active px-4 py-2 rounded-lg border text-sm font-medium">
+          🔍 Texto
+        </button>
+        <button onclick="switchTab('geo')" id="tab-geo" class="search-tab px-4 py-2 rounded-lg border text-sm font-medium bg-white">
+          📍 Cerca de mí
+        </button>
+      </div>
+
+      <!-- Búsqueda por texto -->
+      <div id="panel-text" class="flex gap-2 max-w-md">
         <input
           type="text"
           id="searchInput"
-          placeholder="Buscar por nombre, ciudad o barrio..."
+          placeholder="Buscar por nombre, teléfono o ciudad..."
           class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
         <button
@@ -33,21 +55,69 @@
           Buscar
         </button>
       </div>
+
+      <!-- Búsqueda por geolocalización -->
+      <div id="panel-geo" class="hidden">
+        <div class="flex flex-wrap gap-3 items-center mb-4">
+          <button
+            onclick="geoSearch()"
+            id="geoSearchBtn"
+            class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+          >
+            📍 Buscar cerca de mí
+          </button>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Radio:</label>
+            <select id="radiusSelect" class="px-3 py-2 border rounded-lg text-sm">
+              <option value="1">1 km</option>
+              <option value="3">3 km</option>
+              <option value="5" selected>5 km</option>
+              <option value="10">10 km</option>
+              <option value="20">20 km</option>
+              <option value="50">50 km</option>
+            </select>
+          </div>
+          <span id="geoStatus" class="text-sm text-gray-500"></span>
+        </div>
+        <div id="searchMap"></div>
+      </div>
     </div>
 
     <div id="resultsInfo" class="mb-4 text-gray-600"></div>
     <div id="contactDetail" class="hidden mb-8"></div>
     <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="pagination" class="mt-4"></div>
     <div id="noResults" class="hidden text-center text-gray-500 py-10">
       No se encontraron resultados
     </div>
   </main>
 
   <script>
+    // --- Tab switching ---
+    let map = null;
+    let activeTab = 'text';
+
+    function switchTab(tab) {
+      activeTab = tab;
+      ['text', 'geo'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+        document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+        document.getElementById(`tab-${t}`).classList.toggle('bg-white', t !== tab);
+      });
+
+      // Initialize map lazily when geo tab is first shown
+      if (tab === 'geo' && !map) {
+        initSearchMap();
+      }
+    }
+
+    // --- Text search ---
     function doSearch() {
       const query = document.getElementById('searchInput').value.trim();
       if (query) {
         window.location.href = `/search?q=${encodeURIComponent(query)}`;
+      } else {
+        window.location.href = '/search';
       }
     }
 
@@ -55,14 +125,86 @@
       if (e.key === 'Enter') doSearch();
     });
 
+    // --- Geo search ---
+    function initSearchMap() {
+      // Default center: Buenos Aires area
+      map = initMap('searchMap', -34.6037, -58.3816, 12);
+    }
+
+    async function geoSearch() {
+      const btn = document.getElementById('geoSearchBtn');
+      const status = document.getElementById('geoStatus');
+      const radius = parseFloat(document.getElementById('radiusSelect').value);
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Obteniendo ubicación...';
+      status.textContent = '';
+
+      try {
+        const pos = await getUserLocation();
+        status.textContent = `📍 Ubicación obtenida. Buscando en radio de ${radius} km...`;
+
+        // Show user location and radius on map
+        if (map) {
+          addUserLocationMarker(map, pos.lat, pos.lon);
+          addRadiusCircle(map, pos.lat, pos.lon, radius);
+          map.setView([pos.lat, pos.lon], 13);
+        }
+
+        // Search via API
+        const contacts = await searchContactsGeo(pos.lat, pos.lon, radius);
+        status.textContent = `✅ ${contacts.length} resultado${contacts.length !== 1 ? 's' : ''} en radio de ${radius} km`;
+
+        renderContacts(contacts);
+
+        // Add markers to map
+        if (map && contacts.length > 0) {
+          addContactMarkers(map, contacts);
+          fitMapToContacts(map, contacts);
+        }
+      } catch (err) {
+        status.textContent = `❌ ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📍 Buscar cerca de mí';
+      }
+    }
+
+    // --- Load results based on URL params ---
     async function loadResults() {
       const params = new URLSearchParams(window.location.search);
       const query = params.get('q');
       const categoryId = params.get('category');
       const contactId = params.get('contact');
+      const lat = params.get('lat');
+      const lon = params.get('lon');
 
       if (contactId) {
         await loadContactDetail(contactId);
+        return;
+      }
+
+      // Geo search via URL params
+      if (lat && lon) {
+        switchTab('geo');
+        const radius = parseFloat(params.get('radius_km') || '5');
+        document.getElementById('radiusSelect').value = radius;
+        document.getElementById('geoStatus').textContent = 'Buscando por coordenadas...';
+        try {
+          const contacts = await searchContactsGeo(parseFloat(lat), parseFloat(lon), radius);
+          document.getElementById('geoStatus').textContent = `${contacts.length} resultado${contacts.length !== 1 ? 's' : ''}`;
+          renderContacts(contacts);
+          if (map) {
+            addUserLocationMarker(map, parseFloat(lat), parseFloat(lon));
+            addRadiusCircle(map, parseFloat(lat), parseFloat(lon), radius);
+            if (contacts.length > 0) {
+              addContactMarkers(map, contacts);
+              fitMapToContacts(map, contacts);
+            }
+          }
+        } catch (err) {
+          document.getElementById('geoStatus').textContent = `Error: ${err.message}`;
+        }
         return;
       }
 
@@ -88,49 +230,37 @@
         const grid = document.getElementById('contactsGrid');
         grid.classList.add('hidden');
 
-        // Escape all user data to prevent XSS
-        const safeName = escapeHtml(contact.name);
-        const safePhone = escapeHtml(contact.phone);
-        const safeEmail = escapeHtml(contact.email);
-        const safeSchedule = escapeHtml(contact.schedule);
-        const safeAddress = escapeHtml(contact.address);
-        const safeCity = escapeHtml(contact.city);
-        const safeNeighborhood = escapeHtml(contact.neighborhood);
-        const safeDescription = escapeHtml(contact.description);
-        const safeWebsite = escapeHtml(contact.website);
-        const safeMapsUrl = escapeHtml(contact.maps_url);
-        const safePhotoPath = escapeHtml(contact.photo_path);
-        const safeCategoryName = category ? escapeHtml(category.name) : '';
-
+        const s = escapeHtml;
         document.getElementById('contactDetail').classList.remove('hidden');
         document.getElementById('contactDetail').innerHTML = `
           <div class="bg-white rounded-lg shadow-sm border p-6 max-w-lg">
             <div class="flex items-start justify-between mb-4">
               <div>
-                <h2 class="text-2xl font-bold text-gray-800">${safeName}</h2>
-                ${category ? `<div class="text-sm text-blue-600 mt-1">${getCategoryEmoji(category.code)} ${safeCategoryName}</div>` : ''}
+                <h2 class="text-2xl font-bold text-gray-800">${s(contact.name)}</h2>
+                ${category ? `<div class="text-sm text-blue-600 mt-1">${getCategoryEmoji(category.code)} ${s(category.name)}</div>` : ''}
               </div>
-              ${contact.is_verified ? '<span class="px-2 py-1 bg-green-100 text-green-700 text-sm rounded">✓ Verificado</span>' : ''}
+              ${contact.verification_level >= 3 ? '<span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-sm rounded">⭐ Premium</span>' :
+                contact.verification_level >= 2 ? '<span class="px-2 py-1 bg-green-100 text-green-700 text-sm rounded">✓ Documentado</span>' :
+                contact.verification_level >= 1 ? '<span class="px-2 py-1 bg-blue-100 text-blue-700 text-sm rounded">✓ Verificado</span>' : ''}
             </div>
-            ${safePhotoPath ? `<img src="${safePhotoPath}" alt="${safeName}" class="w-full h-48 object-cover rounded-lg mb-4">` : ''}
+            ${contact.photo_path ? `<img src="${s(contact.photo_path)}" alt="${s(contact.name)}" class="w-full h-48 object-cover rounded-lg mb-4">` : ''}
             <div class="space-y-3">
               <div class="flex items-center gap-3">
                 <span class="text-gray-500">📞</span>
-                <a href="tel:${safePhone}" class="text-blue-600 hover:underline">${safePhone}</a>
+                <a href="tel:${s(contact.phone)}" class="text-blue-600 hover:underline">${s(contact.phone)}</a>
               </div>
-              ${safeEmail ? `<div class="flex items-center gap-3"><span class="text-gray-500">✉️</span><a href="mailto:${safeEmail}" class="text-blue-600 hover:underline">${safeEmail}</a></div>` : ''}
-              ${safeSchedule ? `<div class="flex items-center gap-3"><span class="text-gray-500">🕐</span><span>${safeSchedule}</span></div>` : ''}
-              ${safeAddress ? `<div class="flex items-center gap-3"><span class="text-gray-500">📍</span><span>${safeAddress}</span></div>` : ''}
-              ${safeCity ? `<div class="flex items-center gap-3"><span class="text-gray-500">🏙️</span><span>${safeCity}${safeNeighborhood ? ' - ' + safeNeighborhood : ''}</span></div>` : ''}
-              ${safeWebsite ? `<div class="flex items-center gap-3"><span class="text-gray-500">🌐</span><a href="${safeWebsite}" target="_blank" class="text-blue-600 hover:underline">${safeWebsite}</a></div>` : ''}
-              ${safeMapsUrl ? `<div class="flex items-center gap-3"><span class="text-gray-500">🗺️</span><a href="${safeMapsUrl}" target="_blank" class="text-blue-600 hover:underline">Ver en Google Maps</a></div>` : ''}
-              ${safeDescription ? `<div class="flex items-start gap-3"><span class="text-gray-500">📝</span><span>${safeDescription}</span></div>` : ''}
+              ${contact.email ? `<div class="flex items-center gap-3"><span class="text-gray-500">✉️</span><a href="mailto:${s(contact.email)}" class="text-blue-600 hover:underline">${s(contact.email)}</a></div>` : ''}
+              ${contact.schedule ? `<div class="flex items-center gap-3"><span class="text-gray-500">🕐</span><span>${s(contact.schedule)}</span></div>` : ''}
+              ${contact.address ? `<div class="flex items-center gap-3"><span class="text-gray-500">📍</span><span>${s(contact.address)}</span></div>` : ''}
+              ${contact.city ? `<div class="flex items-center gap-3"><span class="text-gray-500">🏙️</span><span>${s(contact.city)}${contact.neighborhood ? ' - ' + s(contact.neighborhood) : ''}</span></div>` : ''}
+              ${contact.website ? `<div class="flex items-center gap-3"><span class="text-gray-500">🌐</span><a href="${s(contact.website)}" target="_blank" class="text-blue-600 hover:underline">${s(contact.website)}</a></div>` : ''}
+              ${contact.maps_url ? `<div class="flex items-center gap-3"><span class="text-gray-500">🗺️</span><a href="${s(contact.maps_url)}" target="_blank" class="text-blue-600 hover:underline">Ver en Google Maps</a></div>` : ''}
+              ${contact.description ? `<div class="flex items-start gap-3"><span class="text-gray-500">📝</span><span>${s(contact.description)}</span></div>` : ''}
             </div>
             <div class="flex gap-4 mt-6">
               <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
               <a href="/edit?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>
               ${isLoggedIn() ? `<a href="/history?id=${contact.id}" class="text-gray-600 hover:underline">Ver historial</a>` : ''}
-              ${contact.pending_changes_count > 0 && isLoggedIn() ? `<span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm">${contact.pending_changes_count} pendiente${contact.pending_changes_count > 1 ? 's' : ''}</span>` : ''}
             </div>
           </div>
         `;
@@ -140,41 +270,94 @@
       }
     }
 
-    async function searchByQuery(query) {
+    // --- Pagination state ---
+    let currentPage = 1;
+    const itemsPerPage = 18;
+    let currentSearchType = null;
+    let currentSearchParam = null;
+
+    async function searchByQuery(query, page = 1) {
+      currentPage = page;
+      currentSearchType = 'query';
+      currentSearchParam = query;
       document.getElementById('resultsInfo').textContent = `Resultados para "${query}"`;
+      const skip = (page - 1) * itemsPerPage;
       try {
-        const contacts = await searchContacts(query);
+        const data = await searchContacts(query, null, skip, itemsPerPage);
+        const contacts = data.contacts || data;
+        const total = data.total || contacts.length;
         renderContacts(contacts);
+        renderPagination('pagination', page, total, itemsPerPage, (p) => searchByQuery(query, p));
       } catch (err) {
         document.getElementById('contactsGrid').innerHTML =
           `<div class="text-red-500 col-span-full">Error: ${err.message}</div>`;
       }
     }
 
-    async function searchByCategory(categoryId) {
+    async function searchByCategory(categoryId, page = 1) {
+      currentPage = page;
+      currentSearchType = 'category';
+      currentSearchParam = categoryId;
+      const skip = (page - 1) * itemsPerPage;
       try {
         const categories = await getCategories();
         const category = categories.find(c => c.id === parseInt(categoryId));
         if (category) {
           document.getElementById('resultsInfo').textContent = `${getCategoryEmoji(category.code)} ${category.name}`;
         }
-        const contacts = await searchContacts('', parseInt(categoryId));
+        const data = await searchContacts('', parseInt(categoryId), skip, itemsPerPage);
+        const contacts = data.contacts || data;
+        const total = data.total || contacts.length;
         renderContacts(contacts);
+        renderPagination('pagination', page, total, itemsPerPage, (p) => searchByCategory(categoryId, p));
       } catch (err) {
         document.getElementById('contactsGrid').innerHTML =
           `<div class="text-red-500 col-span-full">Error: ${escapeHtml(err.message)}</div>`;
       }
     }
 
-    async function loadAllContacts() {
+    async function loadAllContacts(page = 1) {
+      currentPage = page;
+      currentSearchType = 'all';
+      currentSearchParam = null;
       document.getElementById('resultsInfo').textContent = 'Todos los contactos';
+      const skip = (page - 1) * itemsPerPage;
       try {
-        const contacts = await getContacts();
+        const data = await getContacts(skip, itemsPerPage);
+        const contacts = data.contacts || data;
+        const total = data.total || contacts.length;
         renderContacts(contacts);
+        renderPagination('pagination', page, total, itemsPerPage, (p) => loadAllContacts(p));
       } catch (err) {
         document.getElementById('contactsGrid').innerHTML =
           `<div class="text-red-500 col-span-full">Error: ${err.message}</div>`;
       }
+    }
+
+    function renderSimplePagination(containerId, currentPage, hasNextPage, onPageChange) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      if (currentPage === 1 && !hasNextPage) {
+        container.innerHTML = '';
+        return;
+      }
+
+      window[`_pagination_${containerId}`] = (page) => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        onPageChange(page);
+      };
+
+      let html = '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">';
+      if (currentPage > 1) {
+        html += `<button onclick="window._pagination_${containerId}(${currentPage - 1})" class="px-3 py-1 border rounded text-sm hover:bg-gray-100">← Anterior</button>`;
+      }
+      html += `<span class="px-3 py-1 text-sm font-medium">${currentPage}</span>`;
+      if (hasNextPage) {
+        html += `<button onclick="window._pagination_${containerId}(${currentPage + 1})" class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Siguiente →</button>`;
+      }
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     async function renderContacts(contacts) {
@@ -187,39 +370,48 @@
         return;
       }
 
+      grid.classList.remove('hidden');
+      noResults.classList.add('hidden');
+
       try {
         const categories = await getCategories();
         grid.innerHTML = contacts.map(c => {
           const cat = categories.find(cat => cat.id === c.category_id);
-          const safeName = escapeHtml(c.name);
-          const safePhone = escapeHtml(c.phone);
-          const safeCity = escapeHtml(c.city);
-          const safeNeighborhood = escapeHtml(c.neighborhood);
-          const safeDescription = escapeHtml(c.description);
-          const safeCategoryName = cat ? escapeHtml(cat.name) : '';
+          const s = escapeHtml;
+          const verBadge = c.verification_level >= 3 ? '<span class="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">⭐</span>' :
+            c.verification_level >= 2 ? '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded">✓</span>' :
+            c.verification_level >= 1 ? '<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">✓</span>' : '';
           return `
-            <a href="/search?contact=${c.id}"
+            <a href="/profile?id=${c.id}"
                class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
-              <div class="font-semibold text-gray-800">${safeName}</div>
-              <div class="text-blue-600 mt-1">📞 ${safePhone}</div>
-              ${cat ? `<div class="text-sm text-gray-500 mt-1">${getCategoryEmoji(cat.code)} ${safeCategoryName}</div>` : ''}
-              ${safeCity ? `<div class="text-gray-500 text-sm mt-1">📍 ${safeCity}${safeNeighborhood ? ' - ' + safeNeighborhood : ''}</div>` : ''}
-              ${safeDescription ? `<div class="text-gray-400 text-sm mt-2 line-clamp-2">${safeDescription}</div>` : ''}
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-gray-800">${s(c.name)}</span>
+                ${verBadge}
+              </div>
+              <div class="text-blue-600 mt-1">📞 ${s(c.phone)}</div>
+              ${cat ? `<div class="text-sm text-gray-500 mt-1">${getCategoryEmoji(cat.code)} ${s(cat.name)}</div>` : ''}
+              ${c.city ? `<div class="text-gray-500 text-sm mt-1">📍 ${s(c.city)}${c.neighborhood ? ' - ' + s(c.neighborhood) : ''}</div>` : ''}
+              ${c.distance_km != null ? `<div class="text-green-600 text-sm mt-1">📏 ${c.distance_km} km</div>` : ''}
+              ${c.description ? `<div class="text-gray-400 text-sm mt-2 line-clamp-2">${s(c.description)}</div>` : ''}
             </a>
           `;
         }).join('');
       } catch (err) {
         grid.innerHTML = contacts.map(c => {
-          const safeName = escapeHtml(c.name);
-          const safePhone = escapeHtml(c.phone);
-          const safeCity = escapeHtml(c.city);
-          const safeNeighborhood = escapeHtml(c.neighborhood);
+          const s = escapeHtml;
+          const verBadge = c.verification_level >= 3 ? '<span class="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">⭐</span>' :
+            c.verification_level >= 2 ? '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded">✓</span>' :
+            c.verification_level >= 1 ? '<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">✓</span>' : '';
           return `
-            <a href="/search?contact=${c.id}"
+            <a href="/profile?id=${c.id}"
                class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
-              <div class="font-semibold text-gray-800">${safeName}</div>
-              <div class="text-blue-600 mt-1">📞 ${safePhone}</div>
-              ${safeCity ? `<div class="text-gray-500 text-sm mt-1">📍 ${safeCity}${safeNeighborhood ? ' - ' + safeNeighborhood : ''}</div>` : ''}
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-gray-800">${s(c.name)}</span>
+                ${verBadge}
+              </div>
+              <div class="text-blue-600 mt-1">📞 ${s(c.phone)}</div>
+              ${c.city ? `<div class="text-gray-500 text-sm mt-1">📍 ${s(c.city)}${c.neighborhood ? ' - ' + s(c.neighborhood) : ''}</div>` : ''}
+              ${c.distance_km != null ? `<div class="text-green-600 text-sm mt-1">📏 ${c.distance_km} km</div>` : ''}
             </a>
           `;
         }).join('');

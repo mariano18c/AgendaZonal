@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Proveedor - Agenda de la zona</title>
+  <link rel="stylesheet" href="/css/output.css">
+  <link rel="manifest" href="/manifest.json">
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">📊 Mi Dashboard</h1>
+    <div id="dashboardContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+    <div id="pagination" class="mt-4"></div>
+  </main>
+  <script>
+    let currentPage = 1;
+    const itemsPerPage = 20;
+
+    async function loadDashboard(page = 1) {
+      currentPage = page;
+      const container = document.getElementById('dashboardContainer');
+      if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión</div>'; return; }
+      const skip = (page - 1) * itemsPerPage;
+      try {
+        const data = await apiRequest(`/api/provider/dashboard?contacts_skip=${skip}&contacts_limit=${itemsPerPage}`);
+        const { leads_this_month, leads_last_month, avg_rating, total_reviews, active_offers, contacts, total_contacts, leads_by_week, recent_reviews } = data;
+        container.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-blue-600">${leads_this_month}</div><div class="text-sm text-gray-500">Leads este mes</div></div>
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-green-600">${leads_last_month}</div><div class="text-sm text-gray-500">Leads mes anterior</div></div>
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-yellow-600">${avg_rating ? avg_rating.toFixed(1) : 'N/A'}</div><div class="text-sm text-gray-500">Rating promedio</div></div>
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-purple-600">${active_offers}</div><div class="text-sm text-gray-500">Ofertas activas</div></div>
+          </div>
+          ${contacts && contacts.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6"><h2 class="font-semibold text-gray-800 mb-4">Mis Contactos (${total_contacts})</h2><div class="space-y-2">${contacts.map(c => {
+            const s = (v) => escapeHtml(v || '');
+            return `<div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 border-b last:border-0"><a href="/profile?id=${c.id}" class="font-medium text-gray-800 hover:text-blue-600">${s(c.name)}</a><span class="text-sm text-gray-500">${c.leads_count || 0} leads</span></div>`;
+          }).join('')}</div></div>` : ''}`;
+        renderPagination('pagination', page, total_contacts, itemsPerPage, (p) => loadDashboard(p));
+      } catch (err) { container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`; }
+    }
+    loadDashboard();
+  </script>
+</body>
+</html>

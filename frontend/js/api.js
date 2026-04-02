@@ -94,19 +94,46 @@ async function getCategories() {
   return apiRequest('/api/categories');
 }
 
-async function getContacts() {
-  return apiRequest('/api/contacts');
+async function getContacts(skip = 0, limit = 20) {
+  return apiRequest(`/api/contacts?skip=${skip}&limit=${limit}`);
 }
 
 async function getContact(id) {
   return apiRequest(`/api/contacts/${id}`);
 }
 
-async function searchContacts(query, categoryId) {
+async function searchContacts(query, categoryId, skip = 0, limit = 20) {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
   if (categoryId) params.set('category_id', categoryId);
+  params.set('skip', skip);
+  params.set('limit', limit);
   return apiRequest(`/api/contacts/search?${params.toString()}`);
+}
+
+async function searchContactsGeo(lat, lon, radiusKm, query, categoryId, skip = 0, limit = 20) {
+  const params = new URLSearchParams();
+  params.set('lat', lat);
+  params.set('lon', lon);
+  if (radiusKm) params.set('radius_km', radiusKm);
+  if (query) params.set('q', query);
+  if (categoryId) params.set('category_id', categoryId);
+  params.set('skip', skip);
+  params.set('limit', limit);
+  return apiRequest(`/api/contacts/search?${params.toString()}`);
+}
+
+async function searchContactsByPhone(phone) {
+  const params = new URLSearchParams();
+  params.set('phone', phone);
+  return apiRequest(`/api/contacts/search/phone?${params.toString()}`);
+}
+
+async function replyToReview(reviewId, replyText) {
+  return apiRequest(`/api/reviews/${reviewId}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ reply_text: replyText }),
+  });
 }
 
 async function createContact(data) {
@@ -156,14 +183,21 @@ async function deleteContactImage(contactId) {
   });
 }
 
-async function getContactHistory(contactId) {
-  return apiRequest(`/api/contacts/${contactId}/history`);
+async function getContactHistory(contactId, skip = 0, limit = 20) {
+  return apiRequest(`/api/contacts/${contactId}/history?skip=${skip}&limit=${limit}`);
 }
 
 async function verifyContact(contactId, isVerified) {
   return apiRequest(`/api/contacts/${contactId}/verify`, {
     method: 'POST',
     body: JSON.stringify({ is_verified: isVerified }),
+  });
+}
+
+async function setVerificationLevel(contactId, level) {
+  return apiRequest(`/api/admin/contacts/${contactId}/verification`, {
+    method: 'PUT',
+    body: JSON.stringify({ verification_level: level }),
   });
 }
 
@@ -174,8 +208,8 @@ async function editContact(contactId, data) {
   });
 }
 
-async function getPendingContacts() {
-  return apiRequest('/api/contacts/pending');
+async function getPendingContacts(skip = 0, limit = 20) {
+  return apiRequest(`/api/contacts/pending?skip=${skip}&limit=${limit}`);
 }
 
 async function getContactChanges(contactId) {
@@ -200,8 +234,8 @@ async function deleteContactChange(contactId, changeId) {
   });
 }
 
-async function getUsers(filter = 'all') {
-  return apiRequest(`/api/users?filter=${filter}`);
+async function getUsers(filter = 'all', skip = 0, limit = 20) {
+  return apiRequest(`/api/users?filter=${filter}&skip=${skip}&limit=${limit}`);
 }
 
 async function createUser(data) {
@@ -241,5 +275,12 @@ async function resetUserPassword(userId, newPassword) {
   return apiRequest(`/api/users/${userId}/reset-password`, {
     method: 'POST',
     body: JSON.stringify({ new_password: newPassword }),
+  });
+}
+
+async function reportContact(contactId, reason, details) {
+  return apiRequest(`/api/contacts/${contactId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ reason, details: details || null }),
   });
 }

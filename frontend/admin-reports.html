@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reportes - Admin - Agenda de la zona</title>
+  <link rel="stylesheet" href="/css/output.css">
+  <link rel="manifest" href="/manifest.json">
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+      <div id="navbar"></div>
+    </div>
+  </nav>
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">🚩 Administración de Proveedores</h1>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-6">
+      <button onclick="switchTab('reports')" id="tab-reports" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-blue-600">Reportes pendientes</button>
+      <button onclick="switchTab('contacts')" id="tab-contacts" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200">Contactos por estado</button>
+    </div>
+
+    <!-- Tab: Reportes pendientes -->
+    <div id="panel-reports">
+      <div class="bg-white rounded-b-lg rounded-tr-lg shadow-sm border p-4 mb-6 flex flex-wrap gap-4 items-end">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Umbral mínimo</label>
+          <select id="filterThreshold" onchange="loadReports()" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+            <option value="1" selected>Todos (1+)</option>
+            <option value="2">2+ reportes</option>
+            <option value="3">3+ reportes (auto-flag)</option>
+          </select>
+        </div>
+      </div>
+      <div id="reportsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+    </div>
+
+    <!-- Tab: Contactos por estado -->
+    <div id="panel-contacts" class="hidden">
+      <div class="bg-white rounded-b-lg rounded-tr-lg shadow-sm border p-4 mb-6 flex flex-wrap gap-4 items-end">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Estado del contacto</label>
+          <select id="contactStatusFilter" onchange="loadContacts()" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+            <option value="all" selected>Todos</option>
+            <option value="active">Activos</option>
+            <option value="flagged" selected>Flagged</option>
+            <option value="suspended">Suspendidos</option>
+          </select>
+        </div>
+      </div>
+      <div id="contactsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+      <div id="contactsPagination" class="mt-4"></div>
+    </div>
+  </main>
+
+  <script>
+    // --- Tab switching ---
+    function switchTab(tab) {
+      document.getElementById('panel-reports').classList.toggle('hidden', tab !== 'reports');
+      document.getElementById('panel-contacts').classList.toggle('hidden', tab !== 'contacts');
+      document.getElementById('tab-reports').className = tab === 'reports'
+        ? 'px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-blue-600'
+        : 'px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200';
+      document.getElementById('tab-contacts').className = tab === 'contacts'
+        ? 'px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-blue-600'
+        : 'px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200';
+      if (tab === 'contacts') loadContacts();
+    }
+
+    // --- Status badge ---
+    function getStatusBadge(status) {
+      const badges = {
+        active: '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Activo</span>',
+        flagged: '<span class="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full">Flagged</span>',
+        suspended: '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">Suspendido</span>',
+      };
+      return badges[status] || `<span class="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">${escapeHtml(status)}</span>`;
+    }
+
+    // --- Tab 1: Reportes pendientes ---
+    async function loadReports() {
+      const container = document.getElementById('reportsContainer');
+      if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión como moderador</div>'; return; }
+
+      const threshold = document.getElementById('filterThreshold').value;
+
+      try {
+        const data = await apiRequest(`/api/admin/reports/pending?threshold=${threshold}`);
+        const { pending, total } = data;
+
+        if (total === 0) {
+          container.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center">
+            <div class="text-4xl mb-4">✅</div>
+            <p class="text-gray-600">No hay proveedores con reportes pendientes</p>
+          </div>`;
+          return;
+        }
+
+        container.innerHTML = `<p class="text-gray-600 mb-4">${total} proveedor${total !== 1 ? 'es' : ''} con reportes pendientes</p>
+          <div class="space-y-4">${pending.map(c => renderReportCard(c)).join('')}</div>`;
+      } catch (err) {
+        container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderReportCard(contact) {
+      const s = (v) => escapeHtml(v || '');
+      const reportsHtml = contact.reports.map(r => `
+        <div class="border-t pt-3 mt-3 first:border-0 first:pt-0 first:mt-0">
+          <div class="text-sm text-gray-700"><span class="font-medium">${s(r.reporter)}</span> · ${s(r.reason)}</div>
+          ${r.details ? `<p class="text-gray-600 text-sm mt-1">${s(r.details)}</p>` : ''}
+        </div>
+      `).join('');
+
+      return `<div class="bg-white rounded-lg shadow-sm border p-5">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <div class="font-semibold text-gray-800">${s(contact.contact_name)} ${getStatusBadge(contact.contact_status)}</div>
+            <div class="text-sm text-gray-500">${s(contact.contact_city || '')} · ${contact.reports_count} reporte${contact.reports_count !== 1 ? 's' : ''}</div>
+          </div>
+        </div>
+        ${reportsHtml}
+        <div class="flex gap-2 mt-4 pt-3 border-t">
+          <button onclick="resolveReport(${contact.reports[0].id}, 'reactivate')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm">✅ Reactivar</button>
+          <button onclick="resolveReport(${contact.reports[0].id}, 'suspend')" class="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition text-sm">⏸️ Suspender</button>
+          <button onclick="resolveReport(${contact.reports[0].id}, 'delete')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition text-sm">🗑️ Eliminar</button>
+        </div>
+      </div>`;
+    }
+
+    async function resolveReport(reportId, action) {
+      if (!confirm(`¿${action === 'reactivate' ? 'Reactivar' : action === 'suspend' ? 'Suspender' : 'Eliminar'} este contacto?`)) return;
+      try {
+        await apiRequest(`/api/admin/reports/${reportId}/resolve?action=${action}`, { method: 'POST' });
+        loadReports();
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
+    // --- Tab 2: Contactos por estado ---
+    let contactsPage = 1;
+    const contactsPerPage = 20;
+
+    async function loadContacts(page = 1) {
+      contactsPage = page;
+      const container = document.getElementById('contactsContainer');
+      if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión como moderador</div>'; return; }
+
+      const status = document.getElementById('contactStatusFilter').value;
+      const skip = (page - 1) * contactsPerPage;
+
+      try {
+        const data = await apiRequest(`/api/admin/contacts?status=${status}&skip=${skip}&limit=${contactsPerPage}`);
+        const { contacts, total } = data;
+
+        if (total === 0) {
+          container.innerHTML = `<div class="bg-white rounded-lg shadow-sm border p-8 text-center">
+            <p class="text-gray-600">No hay contactos con estado "${status}"</p>
+          </div>`;
+          document.getElementById('contactsPagination').innerHTML = '';
+          return;
+        }
+
+        container.innerHTML = `<p class="text-gray-600 mb-4">${total} contacto${total !== 1 ? 's' : ''}</p>
+          <div class="bg-white rounded-lg shadow-sm border overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="text-left px-4 py-3 font-medium text-gray-700">Nombre</th>
+                  <th class="text-left px-4 py-3 font-medium text-gray-700">Ciudad</th>
+                  <th class="text-left px-4 py-3 font-medium text-gray-700">Dueño</th>
+                  <th class="text-left px-4 py-3 font-medium text-gray-700">Estado</th>
+                  <th class="text-right px-4 py-3 font-medium text-gray-700">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>${contacts.map(c => renderContactRow(c)).join('')}</tbody>
+            </table>
+          </div>`;
+        renderPagination('contactsPagination', page, total, contactsPerPage, (p) => loadContacts(p));
+      } catch (err) {
+        container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderContactRow(c) {
+      const s = (v) => escapeHtml(v || '');
+      return `<tr class="border-t">
+        <td class="px-4 py-3 font-medium text-gray-800"><a href="/profile?id=${c.id}" class="text-blue-600 hover:underline">${s(c.name)}</a></td>
+        <td class="px-4 py-3 text-gray-600">${s(c.city || '-')}</td>
+        <td class="px-4 py-3 text-gray-600">${s(c.owner)}</td>
+        <td class="px-4 py-3">${getStatusBadge(c.status)}</td>
+        <td class="px-4 py-3 text-right">
+          ${c.status !== 'active' ? `<button onclick="updateStatus(${c.id}, 'active')" class="text-green-600 hover:underline text-sm mr-2">Activar</button>` : ''}
+          ${c.status !== 'suspended' ? `<button onclick="updateStatus(${c.id}, 'suspended')" class="text-yellow-600 hover:underline text-sm mr-2">Suspender</button>` : ''}
+          ${c.status !== 'flagged' ? `<button onclick="updateStatus(${c.id}, 'flagged')" class="text-orange-600 hover:underline text-sm">Flaggear</button>` : ''}
+        </td>
+      </tr>`;
+    }
+
+    async function updateStatus(contactId, newStatus) {
+      const labels = { active: 'activar', suspended: 'suspender', flaggear: 'flaggear' };
+      if (!confirm(`¿${labels[newStatus] || newStatus} este contacto?`)) return;
+      try {
+        await apiRequest(`/api/admin/contacts/${contactId}/status?new_status=${newStatus}`, { method: 'PUT' });
+        loadContacts();
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
+    // Init
+    loadReports();
+  </script>
+</body>
+</html>

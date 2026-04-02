@@ -32,6 +32,7 @@
 
       <h2 class="text-xl font-semibold text-gray-800 mb-4">Historial de cambios</h2>
       <div id="historyList" class="space-y-4"></div>
+      <div id="pagination" class="mt-4"></div>
       <div id="noHistory" class="hidden text-center text-gray-500 py-10">
         No hay cambios registrados
       </div>
@@ -56,7 +57,12 @@
       maps_url: 'Google Maps',
     };
 
-    async function loadHistory() {
+    let currentPage = 1;
+    const itemsPerPage = 20;
+    let currentContactId = null;
+
+    async function loadHistory(page = 1) {
+      currentPage = page;
       // Check if logged in
       if (!isLoggedIn()) {
         document.getElementById('loginRequired').classList.remove('hidden');
@@ -66,19 +72,22 @@
       document.getElementById('content').classList.remove('hidden');
 
       const params = new URLSearchParams(window.location.search);
-      const contactId = params.get('id');
+      currentContactId = params.get('id');
 
-      if (!contactId) {
+      if (!currentContactId) {
         document.getElementById('contactInfo').innerHTML = '<p class="text-red-500">No se especificó un contacto</p>';
         return;
       }
 
+      const skip = (page - 1) * itemsPerPage;
+
       try {
-        const contact = await getContact(contactId);
+        const contact = await getContact(currentContactId);
         renderContactInfo(contact);
 
-        const history = await getContactHistory(contactId);
-        renderHistory(history);
+        const data = await getContactHistory(currentContactId, skip, itemsPerPage);
+        renderHistory(data.history);
+        renderPagination('pagination', page, data.total, itemsPerPage, (p) => loadHistory(p));
       } catch (err) {
         document.getElementById('contactInfo').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
       }
@@ -88,16 +97,57 @@
       const div = document.getElementById('contactInfo');
       const safeName = escapeHtml(contact.name);
       const safePhone = escapeHtml(contact.phone);
+      const user = getUser();
+      const isAdmin = user && (user.role === 'admin' || user.role === 'moderator');
+
+      const levelLabels = ['Sin verificar', 'Verificado', 'Documentado', 'Premium'];
+      const levelColors = ['bg-gray-100 text-gray-600', 'bg-blue-100 text-blue-700', 'bg-green-100 text-green-700', 'bg-yellow-100 text-yellow-700'];
+      const levelEmojis = ['', '✓', '✓', '⭐'];
+      const currentLevel = contact.verification_level || 0;
+
+      let verBadge = '';
+      if (currentLevel >= 1) {
+        verBadge = `<span class="inline-block mt-2 px-2 py-1 ${levelColors[currentLevel]} text-sm rounded">${levelEmojis[currentLevel]} ${levelLabels[currentLevel]}</span>`;
+      }
+
+      let levelSelector = '';
+      if (isAdmin) {
+        levelSelector = `
+          <div class="mt-3">
+            <label class="text-sm text-gray-600 mr-2">Nivel de verificación:</label>
+            <select onchange="handleChangeLevel(${contact.id}, this.value)" class="px-2 py-1 border border-gray-300 rounded text-sm">
+              <option value="0" ${currentLevel === 0 ? 'selected' : ''}>Sin verificar</option>
+              <option value="1" ${currentLevel === 1 ? 'selected' : ''}>✓ Verificado</option>
+              <option value="2" ${currentLevel === 2 ? 'selected' : ''}>✓ Documentado</option>
+              <option value="3" ${currentLevel === 3 ? 'selected' : ''}>⭐ Premium</option>
+            </select>
+          </div>
+        `;
+      }
+
       div.innerHTML = `
         <div class="flex items-start justify-between">
           <div>
             <h2 class="text-2xl font-bold text-gray-800">${safeName}</h2>
             <p class="text-blue-600 mt-1">${safePhone}</p>
-            ${contact.is_verified ? '<span class="inline-block mt-2 px-2 py-1 bg-green-100 text-green-700 text-sm rounded">✓ Verificado</span>' : ''}
+            ${verBadge}
+            ${levelSelector}
           </div>
-          ${contact.is_verified ? '<button onclick="handleVerify(' + contact.id + ', false)" class="text-red-600 hover:underline text-sm">Quitar verificación</button>' : '<button onclick="handleVerify(' + contact.id + ', true)" class="text-green-600 hover:underline text-sm">Verificar contacto</button>'}
         </div>
       `;
+    }
+
+    async function handleChangeLevel(contactId, level) {
+      try {
+        await setVerificationLevel(contactId, parseInt(level));
+        const levelLabels = ['Sin verificar', 'Verificado', 'Documentado', 'Premium'];
+        showAlert(`Nivel actualizado a: ${levelLabels[level]}`, 'success');
+        // Reload contact info
+        const contact = await getContact(contactId);
+        renderContactInfo(contact);
+      } catch (err) {
+        showAlert('Error: ' + err.message, 'error');
+      }
     }
 
     function renderHistory(history) {
@@ -135,6 +185,10 @@
           </div>
         `;
       }).join('');
+    }
+
+    function showAlert(message, type = 'success') {
+      alert(message);
     }
 
     async function handleVerify(contactId, verify) {
