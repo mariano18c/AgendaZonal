@@ -234,8 +234,12 @@ async function deleteContactChange(contactId, changeId) {
   });
 }
 
-async function getUsers(filter = 'all', skip = 0, limit = 20) {
-  return apiRequest(`/api/users?filter=${filter}&skip=${skip}&limit=${limit}`);
+// User management API - with filters
+async function getUsers(filter = 'all', role = '', username = '', skip = 0, limit = 20) {
+  let params = `filter=${filter}&skip=${skip}&limit=${limit}`;
+  if (role) params += `&role=${role}`;
+  if (username) params += `&username=${encodeURIComponent(username)}`;
+  return apiRequest(`/api/users?${params}`);
 }
 
 async function createUser(data) {
@@ -283,4 +287,8 @@ async function reportContact(contactId, reason, details) {
     method: 'POST',
     body: JSON.stringify({ reason, details: details || null }),
   });
+}
+
+async function getCaptcha() {
+  return apiRequest('/api/auth/captcha');
 }

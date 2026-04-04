@@ -151,12 +151,12 @@
         }
 
         document.getElementById('profileContent').innerHTML = `
-          <div class="text-sm text-gray-500 mb-4">
-            <a href="/" class="hover:text-blue-600">Inicio</a>
-            ${cat ? ` › <a href="/search?category=${contact.category_id}" class="hover:text-blue-600">${catName}</a>` : ''}
-            ${contact.city ? ` › <span class="hover:text-blue-600">${s(contact.city)}</span>` : ''}
-            › <span class="text-gray-700">${s(contact.name)}</span>
-          </div>
+          ${renderBreadcrumbs([
+            { label: 'Inicio', url: '/' },
+            ...(cat ? [{ label: catName, url: `/search?category=${contact.category_id}` }] : []),
+            ...(contact.city ? [{ label: s(contact.city), url: null }] : []),
+            { label: s(contact.name), url: null }
+          ])}
 
           <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
             <div class="flex flex-wrap items-start justify-between gap-4">

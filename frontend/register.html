@@ -18,6 +18,7 @@
   </nav>
 
   <main class="max-w-md mx-auto px-4 py-12">
+    <div id="breadcrumbs"></div>
     <div class="bg-white rounded-lg shadow-sm border p-8">
       <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Crear Cuenta</h1>
 
@@ -65,6 +66,19 @@
             placeholder="Repetí tu contraseña">
         </div>
 
+        <div id="captchaSection" class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Verificación *</label>
+          <div class="flex gap-2 items-center mb-3">
+            <span id="captchaQuestion" class="text-lg font-semibold text-gray-800">Cargando...</span>
+            <button type="button" id="captchaRefresh" class="text-blue-600 hover:text-blue-800 transition" title="Obtener nuevo desafío">🔄</button>
+          </div>
+          <input type="number" id="captchaAnswer" required inputmode="numeric"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Tu respuesta">
+          <input type="hidden" id="captchaChallengeId">
+          <div id="captchaError" class="hidden text-red-600 text-sm mt-2"></div>
+        </div>
+
         <div id="errorMsg" class="hidden text-red-600 text-sm text-center"></div>
 
         <button type="submit"
@@ -80,10 +94,34 @@
   </main>
 
   <script>
+    let currentCaptchaId = null;
+
+    async function loadCaptcha() {
+      try {
+        const result = await getCaptcha();
+        currentCaptchaId = result.challenge_id;
+        document.getElementById('captchaQuestion').textContent = result.question;
+        document.getElementById('captchaChallengeId').value = result.challenge_id;
+        document.getElementById('captchaError').classList.add('hidden');
+      } catch (err) {
+        document.getElementById('captchaQuestion').textContent = 'Error al cargar verificación';
+        document.getElementById('captchaError').textContent = 'No se pudo cargar el desafío. Hacé clic en 🔄 para reintentar.';
+        document.getElementById('captchaError').classList.remove('hidden');
+      }
+    }
+
+    async function refreshCaptcha() {
+      document.getElementById('captchaAnswer').value = '';
+      document.getElementById('captchaError').classList.add('hidden');
+      await loadCaptcha();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       if (isLoggedIn()) {
         window.location.href = '/';
       }
+      loadCaptcha();
+      document.getElementById('captchaRefresh').addEventListener('click', refreshCaptcha);
     });
 
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
@@ -98,22 +136,50 @@
         return;
       }
 
+      const captchaAnswer = document.getElementById('captchaAnswer').value;
+      if (!captchaAnswer || captchaAnswer.trim() === '') {
+        document.getElementById('captchaError').textContent = 'Respondé la verificación para continuar.';
+        document.getElementById('captchaError').classList.remove('hidden');
+        return;
+      }
+
       const data = {
         username: document.getElementById('username').value.trim(),
         email: document.getElementById('email').value.trim(),
         phone_area_code: document.getElementById('phoneAreaCode').value.trim(),
         phone_number: document.getElementById('phoneNumber').value.trim(),
         password: password,
+        captcha_challenge_id: currentCaptchaId,
+        captcha_answer: captchaAnswer.trim(),
       };
 
       try {
         await register(data);
         window.location.href = '/';
       } catch (err) {
-        document.getElementById('errorMsg').textContent = err.message;
-        document.getElementById('errorMsg').classList.remove('hidden');
+        const msg = err.message;
+        if (msg.includes('CAPTCHA') || msg.includes('expirado') || msg.includes('Desafío')) {
+          document.getElementById('captchaError').textContent = msg;
+          document.getElementById('captchaError').classList.remove('hidden');
+          document.getElementById('captchaAnswer').value = '';
+          // Load new captcha WITHOUT hiding the error message
+          try {
+            const result = await getCaptcha();
+            currentCaptchaId = result.challenge_id;
+            document.getElementById('captchaQuestion').textContent = result.question;
+            document.getElementById('captchaChallengeId').value = result.challenge_id;
+          } catch (e) {
+            document.getElementById('captchaQuestion').textContent = 'Error al cargar verificación';
+          }
+        } else {
+          document.getElementById('errorMsg').textContent = msg;
+          document.getElementById('errorMsg').classList.remove('hidden');
+        }
       }
     });
   </script>
-</body>
+    <script>
+      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Registrarse', 'url': null}]);
+    </script>
+  </body>
 </html>

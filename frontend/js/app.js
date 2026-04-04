@@ -232,6 +232,46 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 /**
+ * Render breadcrumbs navigation.
+ * @param {Array} paths - Array of {label, url} objects. url=null means current (no link).
+ * @returns {string} HTML string for breadcrumbs
+ */
+function renderBreadcrumbs(paths) {
+  if (!paths || !Array.isArray(paths) || paths.length === 0) {
+    return '';
+  }
+
+  // Filter out null/undefined paths
+  const validPaths = paths.filter(p => p && p.label);
+
+  if (validPaths.length === 0) {
+    return '';
+  }
+
+  let html = '<div class="text-sm text-gray-500 mb-4">';
+  
+  validPaths.forEach((path, index) => {
+    const isLast = index === validPaths.length - 1;
+    
+    if (path.url && !isLast) {
+      // Clickable link
+      html += '<a href="' + path.url + '" class="text-blue-600 hover:text-blue-800">' + path.label + '</a>';
+    } else {
+      // Current page (no link)
+      html += '<span class="text-gray-700">' + path.label + '</span>';
+    }
+    
+    // Add separator except for last item
+    if (!isLast) {
+      html += '<span class="text-gray-400 mx-1">&gt;</span>';
+    }
+  });
+  
+  html += '</div>';
+  return html;
+}
+
+/**
  * Render simple pagination: Anterior / N / Siguiente
  * Scrolls to top on page change
  * @param {string} containerId - ID of the container element

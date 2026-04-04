@@ -17,6 +17,7 @@
     </div>
   </nav>
   <main class="max-w-6xl mx-auto px-4 py-8">
+    <div id="breadcrumbs"></div>
     <h1 class="text-2xl font-bold text-gray-800 mb-6">📊 Analytics Zonales</h1>
     <div id="analyticsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
   </main>
@@ -26,19 +27,44 @@
       if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión</div>'; return; }
       try {
         const data = await apiRequest('/api/admin/analytics');
-        const { total_contacts, total_leads, avg_rating, total_reviews, top_categories, leads_by_day } = data;
+        const { total_providers, total_leads, avg_rating, total_reviews, top_categories, leads_by_day } = data;
         container.innerHTML = `
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-blue-600">${total_contacts}</div><div class="text-sm text-gray-500">Contactos</div></div>
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-blue-600">${total_providers}</div><div class="text-sm text-gray-500">Proveedores</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-green-600">${total_leads}</div><div class="text-sm text-gray-500">Leads</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-yellow-600">${avg_rating ? avg_rating.toFixed(1) : 'N/A'}</div><div class="text-sm text-gray-500">Rating Promedio</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-purple-600">${total_reviews}</div><div class="text-sm text-gray-500">Reseñas</div></div>
           </div>
           ${top_categories && top_categories.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6 mb-6"><h2 class="font-semibold text-gray-800 mb-4">Top Categorías</h2><div class="space-y-2">${top_categories.map(c => `<div class="flex justify-between items-center"><span>${c.name}</span><span class="font-medium">${c.count}</span></div>`).join('')}</div></div>` : ''}
-          <div class="text-center"><a href="/api/admin/analytics/export?format=csv" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">📥 Exportar CSV</a></div>`;
+          <div class="text-center"><button onclick="exportCSV()" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">📥 Exportar CSV</button></div>`;
       } catch (err) { container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`; }
     }
+    async function exportCSV() {
+      const token = getToken();
+      if (!token) { alert('Debes iniciar sesión'); return; }
+      try {
+        const resp = await fetch('/api/admin/analytics/export', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) throw new Error('Error al exportar');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'analytics.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
     loadAnalytics();
   </script>
-</body>
+    <script>
+      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Admin', 'url': null}, {'label': 'Analytics', 'url': null}]);
+    </script>
+  </body>
 </html>

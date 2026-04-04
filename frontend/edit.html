@@ -31,6 +31,7 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
+    <div id="breadcrumbs" class="mb-4"></div>
     <div class="mb-6">
       <a href="#" id="backLink" class="text-blue-600 hover:underline">← Volver</a>
     </div>
@@ -263,6 +264,14 @@
         
         // Update back link
         document.getElementById('backLink').href = `/profile?id=${contactId}`;
+
+        // Render breadcrumbs
+        const breadcrumbsData = [
+          { label: 'Inicio', url: '/' },
+          { label: contact.name, url: `/profile?id=${contactId}` },
+          { label: 'Editar', url: null }
+        ];
+        document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs(breadcrumbsData);
 
         user = getUser();
         

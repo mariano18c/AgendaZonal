@@ -18,6 +18,7 @@
   </nav>
 
   <main class="max-w-4xl mx-auto px-4 py-8">
+    <div id="breadcrumbs"></div>
     <div class="mb-6">
       <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
     </div>
@@ -203,5 +204,8 @@
 
     loadHistory();
   </script>
-</body>
+    <script>
+      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Historial', 'url': null}]);
+    </script>
+  </body>
 </html>

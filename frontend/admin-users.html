@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -18,9 +18,7 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <div class="mb-6">
-      <a href="/" class="text-blue-600 hover:underline">← Volver al inicio</a>
-    </div>
+    <div id="breadcrumbs" class="text-sm text-gray-500 mb-4"></div>
 
     <div class="flex justify-between items-center mb-6">
       <div>
@@ -42,7 +40,22 @@
     </div>
 
     <div id="content" class="hidden">
-      <div class="bg-white rounded-lg shadow-sm border p-4 mb-6 flex items-center gap-4">
+      <div class="bg-white rounded-lg shadow-sm border p-4 mb-6 flex flex-wrap items-center gap-4">
+        <label class="flex items-center gap-2">
+          <span class="text-gray-700">Buscar:</span>
+          <input type="text" id="usernameSearch" placeholder="Username..." 
+            oninput="debouncedSearch()"
+            class="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 w-32">
+        </label>
+        <label class="flex items-center gap-2">
+          <span class="text-gray-700">Rol:</span>
+          <select id="roleFilter" onchange="loadUsers()" class="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
+            <option value="">Todos los roles</option>
+            <option value="user">Usuario</option>
+            <option value="moderator">Moderador</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
         <label class="flex items-center gap-2">
           <span class="text-gray-700">Mostrar:</span>
           <select id="userFilter" onchange="loadUsers()" class="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
@@ -165,6 +178,14 @@
 
     let currentPage = 1;
     const itemsPerPage = 20;
+    let searchTimeout = null;
+
+    function debouncedSearch() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        loadUsers(1);
+      }, 300);
+    }
 
     async function loadUsers(page = 1) {
       currentPage = page;
@@ -195,7 +216,9 @@
       const skip = (page - 1) * itemsPerPage;
       try {
         const filter = document.getElementById('userFilter').value;
-        const data = await getUsers(filter, skip, itemsPerPage);
+        const role = document.getElementById('roleFilter').value;
+        const username = document.getElementById('usernameSearch').value.trim();
+        const data = await getUsers(filter, role, username, skip, itemsPerPage);
         document.getElementById('loadingMsg').classList.add('hidden');
         document.getElementById('userCount').textContent = `${data.total} usuario(s)`;
         renderUsers(data.users);
@@ -203,6 +226,22 @@
       } catch (err) {
         document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
       }
+    }
+
+    // Helper to get role display name
+    function getRoleDisplay(role) {
+      const map = { 'user': 'Usuario', 'moderator': 'Moderador', 'admin': 'Admin' };
+      return map[role] || role;
+    }
+
+    // Helper to get role badge class
+    function getRoleBadgeClass(role) {
+      const classes = { 
+        'user': 'bg-gray-100 text-gray-700', 
+        'moderator': 'bg-blue-100 text-blue-700', 
+        'admin': 'bg-purple-100 text-purple-700' 
+      };
+      return classes[role] || 'bg-gray-100 text-gray-700';
     }
 
     function renderUsers(users) {
@@ -213,6 +252,8 @@
         const safeUsername = escapeHtml(u.username);
         const safeEmail = escapeHtml(u.email);
         const safePhone = escapeHtml(u.phone_area_code + '-' + u.phone_number);
+        const roleDisplay = getRoleDisplay(u.role);
+        const roleBadge = getRoleBadgeClass(u.role);
         return `
           <tr class="hover:bg-gray-50 ${!u.is_active ? 'bg-gray-100' : ''}">
             <td class="px-4 py-3">
@@ -223,12 +264,7 @@
             <td class="px-4 py-3 text-gray-600">${safeEmail}</td>
             <td class="px-4 py-3 text-gray-600">${safePhone}</td>
             <td class="px-4 py-3">
-              <select onchange="updateRole(${u.id}, this.value)" 
-                class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
-                <option value="user" ${u.role === 'user' ? 'selected' : ''}>Usuario</option>
-                <option value="moderator" ${u.role === 'moderator' ? 'selected' : ''}>Moderador</option>
-                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-              </select>
+              <span class="px-2 py-1 ${roleBadge} text-xs rounded">${roleDisplay}</span>
             </td>
             <td class="px-4 py-3">
               ${u.is_active 
@@ -407,7 +443,9 @@
       }
     }
 
+    document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{label: 'Inicio', url: '/'}, {label: 'Admin', url: null}, {label: 'Usuarios', url: null}]);
     loadUsers();
   </script>
 </body>
 </html>
+

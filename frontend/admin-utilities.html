@@ -17,27 +17,205 @@
     </div>
   </nav>
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6">🏥 Utilidades del Barrio</h1>
+    <div id="breadcrumbs"></div>
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">🏥 Utilidades del Barrio</h1>
+      <button id="addUtilityBtn" onclick="openUtilityModal('create')" class="hidden bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm font-medium">+ Agregar Utilidad</button>
+    </div>
     <div id="utilitiesContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
   </main>
+
+  <!-- Modal Create/Edit -->
+  <div id="utilityModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+      <h3 id="utilityModalTitle" class="text-lg font-semibold text-gray-800 mb-4">Agregar Utilidad</h3>
+      <form id="utilityForm" onsubmit="handleUtilitySubmit(event)">
+        <input type="hidden" id="utilityId">
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
+          <select id="utilityType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <option value="farmacia_turno">💊 Farmacia de turno</option>
+            <option value="emergencia">🚨 Emergencia</option>
+            <option value="otro">📋 Otro</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+          <input type="text" id="utilityName" maxlength="200" required
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Ej: Farmacia Central">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+          <input type="text" id="utilityPhone" maxlength="20"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Ej: 011-1234-5678">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+          <input type="text" id="utilityAddress" maxlength="255"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Ej: Av. San Martín 1234">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Horario</label>
+          <input type="text" id="utilitySchedule" maxlength="200"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Ej: Lun-Vie 8:00-20:00">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
+          <input type="text" id="utilityCity" maxlength="100"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Ej: Zona Norte">
+        </div>
+        <div id="utilityError" class="text-red-600 text-sm mb-4"></div>
+        <div class="flex gap-3 justify-end">
+          <button type="button" onclick="closeUtilityModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition">Cancelar</button>
+          <button type="submit" id="utilitySubmitBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
+    let _utilitiesData = [];
+
+    function isUtilityAdmin() {
+      const user = getUser();
+      return user && (user.role === 'admin' || user.role === 'moderator');
+    }
+
     async function loadUtilities() {
       const container = document.getElementById('utilitiesContainer');
+      const addBtn = document.getElementById('addUtilityBtn');
+
+      // Show/hide add button based on role
+      if (isUtilityAdmin()) {
+        addBtn.classList.remove('hidden');
+      } else {
+        addBtn.classList.add('hidden');
+      }
+
       try {
         const data = await apiRequest('/api/utilities');
-        if (data.length === 0) { container.innerHTML = '<div class="bg-white rounded-lg shadow-sm border p-8 text-center"><div class="text-4xl mb-4">📋</div><p class="text-gray-600">No hay utilidades registradas</p></div>'; return; }
+        _utilitiesData = data;
+        if (data.length === 0) {
+          container.innerHTML = '<div class="bg-white rounded-lg shadow-sm border p-8 text-center"><div class="text-4xl mb-4">📋</div><p class="text-gray-600">No hay utilidades registradas</p></div>';
+          return;
+        }
         const types = [...new Set(data.map(u => u.type))];
         const typeLabels = { farmacia_turno: '💊 Farmacias de turno', emergencia: '🚨 Emergencias', otro: '📋 Otros' };
+        const isAdmin = isUtilityAdmin();
         container.innerHTML = `<div class="space-y-6">${types.map(type => {
           const items = data.filter(u => u.type === type);
           return `<div><h2 class="text-lg font-semibold text-gray-800 mb-3">${typeLabels[type] || type}</h2><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(u => {
             const s = (v) => escapeHtml(v || '');
-            return `<div class="bg-white rounded-lg shadow-sm border p-4"><div class="font-semibold text-gray-800">${s(u.name)}</div>${u.phone ? `<div class="text-blue-600 mt-1"><a href="tel:${s(u.phone)}">📞 ${s(u.phone)}</a></div>` : ''}${u.address ? `<div class="text-gray-500 text-sm mt-1">📍 ${s(u.address)}</div>` : ''}${u.schedule ? `<div class="text-gray-500 text-sm mt-1">🕐 ${s(u.schedule)}</div>` : ''}</div>`;
+            const actionBtns = isAdmin ? `<div class="flex gap-2 mt-3 pt-3 border-t"><button onclick="openUtilityModal('edit', ${u.id})" class="text-xs text-blue-600 hover:underline">✏️ Editar</button><button onclick="deleteUtility(${u.id})" class="text-xs text-red-600 hover:underline">🗑️ Eliminar</button></div>` : '';
+            return `<div class="bg-white rounded-lg shadow-sm border p-4"><div class="font-semibold text-gray-800">${s(u.name)}</div>${u.phone ? `<div class="text-blue-600 mt-1"><a href="tel:${s(u.phone)}">📞 ${s(u.phone)}</a></div>` : ''}${u.address ? `<div class="text-gray-500 text-sm mt-1">📍 ${s(u.address)}</div>` : ''}${u.schedule ? `<div class="text-gray-500 text-sm mt-1">🕐 ${s(u.schedule)}</div>` : ''}${u.city ? `<div class="text-gray-500 text-sm mt-1">🏙️ ${s(u.city)}</div>` : ''}${actionBtns}</div>`;
           }).join('')}</div></div>`;
         }).join('')}</div>`;
       } catch (err) { container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`; }
     }
+
+    function openUtilityModal(mode, itemId) {
+      const modal = document.getElementById('utilityModal');
+      const title = document.getElementById('utilityModalTitle');
+      const errorEl = document.getElementById('utilityError');
+
+      // Reset form
+      document.getElementById('utilityForm').reset();
+      document.getElementById('utilityId').value = '';
+      errorEl.textContent = '';
+
+      if (mode === 'edit' && itemId) {
+        title.textContent = 'Editar Utilidad';
+        const item = _utilitiesData.find(u => u.id === itemId);
+        if (!item) return;
+        document.getElementById('utilityId').value = item.id;
+        document.getElementById('utilityType').value = item.type || 'otro';
+        document.getElementById('utilityName').value = item.name || '';
+        document.getElementById('utilityPhone').value = item.phone || '';
+        document.getElementById('utilityAddress').value = item.address || '';
+        document.getElementById('utilitySchedule').value = item.schedule || '';
+        document.getElementById('utilityCity').value = item.city || '';
+      } else {
+        title.textContent = 'Agregar Utilidad';
+      }
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeUtilityModal() {
+      const modal = document.getElementById('utilityModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    async function handleUtilitySubmit(e) {
+      e.preventDefault();
+      const errorEl = document.getElementById('utilityError');
+      const btn = document.getElementById('utilitySubmitBtn');
+      const id = document.getElementById('utilityId').value;
+
+      const name = document.getElementById('utilityName').value.trim();
+      if (!name) {
+        errorEl.textContent = 'El nombre es obligatorio';
+        return;
+      }
+
+      const payload = {
+        type: document.getElementById('utilityType').value,
+        name: name,
+        phone: document.getElementById('utilityPhone').value.trim() || null,
+        address: document.getElementById('utilityAddress').value.trim() || null,
+        schedule: document.getElementById('utilitySchedule').value.trim() || null,
+        city: document.getElementById('utilityCity').value.trim() || null,
+      };
+
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+      errorEl.textContent = '';
+
+      try {
+        if (id) {
+          // Update
+          await apiRequest(`/api/admin/utilities/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+        } else {
+          // Create
+          await apiRequest('/api/admin/utilities', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+        }
+        closeUtilityModal();
+        await loadUtilities();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar';
+      }
+    }
+
+    async function deleteUtility(id) {
+      if (!confirm('¿Estás seguro de que querés eliminar esta utilidad?')) return;
+      try {
+        await apiRequest(`/api/admin/utilities/${id}`, { method: 'DELETE' });
+        await loadUtilities();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
     loadUtilities();
   </script>
-</body>
+    <script>
+      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Admin', 'url': null}, {'label': 'Utilidades', 'url': null}]);
+    </script>
+  </body>
 </html>
