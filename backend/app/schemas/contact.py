@@ -194,3 +194,16 @@ class ContactChangeResponse(BaseModel):
     verified_by: int | None = None
     verified_at: datetime | None = None
     created_at: datetime | None = None
+
+
+class TransferOwnershipRequest(BaseModel):
+    """Schema for transferring contact ownership."""
+    model_config = ConfigDict(extra="ignore")
+    new_owner_id: int = Field(..., gt=0, description="ID del nuevo propietario")
+
+
+class ScheduleEntry(BaseModel):
+    """Single day schedule entry."""
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Lunes, 6=Domingo")
+    open_time: str | None = Field(None, description="Hora de apertura (HH:MM) o null para cerrado")
+    close_time: str | None = Field(None, description="Hora de cierre (HH:MM)")

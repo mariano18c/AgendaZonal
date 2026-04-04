@@ -86,13 +86,14 @@ def list_reviews(
     total = query.count()
     reviews = query.offset(skip).limit(limit).all()
 
-    # Enrich with username and reply info
+    # Enrich with username and reply info — batch fetch to avoid N+1
+    user_ids = {r.user_id for r in reviews} | {r.reply_by for r in reviews if r.reply_by}
+    users_map = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
     result = []
     for r in reviews:
-        user = db.query(User).filter(User.id == r.user_id).first()
-        reply_user = None
-        if r.reply_by:
-            reply_user = db.query(User).filter(User.id == r.reply_by).first()
+        user = users_map.get(r.user_id)
+        reply_user = users_map.get(r.reply_by) if r.reply_by else None
         data = ReviewResponse(
             id=r.id,
             contact_id=r.contact_id,
@@ -330,7 +331,6 @@ def approve_review(
     review.is_approved = True
     review.approved_by = user.id
     review.approved_at = datetime.now(timezone.utc)
-    db.commit()
 
     recalculate_rating(db, review.contact_id)
     db.commit()

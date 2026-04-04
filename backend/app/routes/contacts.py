@@ -19,6 +19,8 @@ from app.schemas.contact import (
     ContactChangeCreate,
     ContactChangeResponse,
     VerifyContactRequest,
+    TransferOwnershipRequest,
+    ScheduleEntry,
 )
 from app.config import JWT_SECRET, JWT_ALGORITHM
 from app.auth import get_current_user
@@ -259,10 +261,13 @@ def search_contacts(
 
 
 @router.get("/export")
+@limiter.limit("5/minute")
 def export_contacts(
+    request: Request,
     format: str = Query("csv", pattern="^(csv|json)$"),
     category_id: int | None = None,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Export contacts as CSV or JSON."""
     query = db.query(Contact)
@@ -843,7 +848,7 @@ def cancel_deletion(
 @router.put("/{contact_id}/transfer-ownership", response_model=ContactResponse)
 def transfer_ownership(
     contact_id: int,
-    data: dict,
+    data: TransferOwnershipRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -854,9 +859,7 @@ def transfer_ownership(
     if user.role not in ['admin', 'moderator']:
         raise HTTPException(status_code=403, detail="Solo administradores pueden transferir propiedad")
     
-    new_owner_id = data.get("new_owner_id")
-    if not new_owner_id:
-        raise HTTPException(status_code=400, detail="Se requiere new_owner_id")
+    new_owner_id = data.new_owner_id
     
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
@@ -1150,7 +1153,7 @@ def list_schedules(
 @router.put("/{contact_id}/schedules")
 def update_schedules(
     contact_id: int,
-    schedules: list[dict],
+    schedules: list[ScheduleEntry],
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1172,13 +1175,11 @@ def update_schedules(
 
     # Insert new
     for s in schedules:
-        if not 0 <= s.get("day_of_week", -1) <= 6:
-            continue
         schedule = Schedule(
             contact_id=contact_id,
-            day_of_week=s["day_of_week"],
-            open_time=s.get("open_time"),
-            close_time=s.get("close_time"),
+            day_of_week=s.day_of_week,
+            open_time=s.open_time,
+            close_time=s.close_time,
         )
         db.add(schedule)
 

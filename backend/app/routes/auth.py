@@ -91,7 +91,8 @@ def register(request: Request, response: Response, data: RegisterRequest, db: Se
 
 
 @router.post("/bootstrap-admin", response_model=AuthResponse, status_code=201)
-def bootstrap_admin(data: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def bootstrap_admin(request: Request, data: RegisterRequest, db: Session = Depends(get_db)):
     """Create the first admin user. Only works if the database is empty."""
     # CAP-01: Verify CAPTCHA before processing (if provided)
     if data.captcha_challenge_id and data.captcha_answer:

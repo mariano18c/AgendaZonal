@@ -410,8 +410,8 @@ class TestUpdateSchedules:
         )
         assert resp.status_code == 404
 
-    def test_update_schedules_invalid_day_skipped(self, client, create_user, database_session):
-        """Invalid day_of_week values should be silently skipped."""
+    def test_update_schedules_invalid_day_rejected(self, client, create_user, database_session):
+        """Invalid day_of_week values should be rejected by Pydantic validation."""
         user = create_user()
         contact = Contact(name="Biz", phone="1234567", user_id=user.id)
         database_session.add(contact)
@@ -427,9 +427,8 @@ class TestUpdateSchedules:
                 {"day_of_week": 0, "open_time": "09:00", "close_time": "17:00"},  # Valid
             ],
         )
-        assert resp.status_code == 200
-        resp = client.get(f"/api/contacts/{contact.id}/schedules")
-        assert len(resp.json()) == 1  # Only the valid one
+        # Pydantic validates day_of_week range (0-6), so entire request is rejected
+        assert resp.status_code == 422
 
 
 # ===========================================================================
@@ -559,6 +558,7 @@ class TestTransferOwnership:
         assert resp.status_code == 403
 
     def test_transfer_missing_new_owner_id(self, client, admin_headers, create_user, database_session):
+        """Missing new_owner_id should return 422 (Pydantic validation)."""
         owner = create_user()
         contact = Contact(name="Biz", phone="1234567", user_id=owner.id)
         database_session.add(contact)
@@ -570,7 +570,8 @@ class TestTransferOwnership:
             headers=admin_headers,
             json={},
         )
-        assert resp.status_code == 400
+        # Pydantic validates required field — 422 instead of old 400
+        assert resp.status_code == 422
 
     def test_transfer_contact_not_found(self, client, admin_headers):
         resp = client.put(
@@ -593,6 +594,31 @@ class TestTransferOwnership:
             json={"new_owner_id": 99999},
         )
         assert resp.status_code == 404
+
+    def test_transfer_ownership_rejects_invalid_fields(self, client, admin_headers, create_user, database_session):
+        """Sending extra fields in raw dict should not be applied to the contact."""
+        old_owner = create_user(username="oldowner2", email="old2@test.com")
+        new_owner = create_user(username="newowner2", email="new2@test.com")
+        contact = Contact(name="Transfer Test", phone="1234567", user_id=old_owner.id)
+        database_session.add(contact)
+        database_session.commit()
+        database_session.refresh(contact)
+
+        # Try to inject extra fields that should be ignored
+        resp = client.put(
+            f"/api/contacts/{contact.id}/transfer-ownership",
+            headers=admin_headers,
+            json={
+                "new_owner_id": new_owner.id,
+                "name": "Hacked Name",
+                "phone": "9999999",
+                "role": "admin",
+            },
+        )
+        assert resp.status_code == 200
+        # The contact name and phone should NOT change
+        assert resp.json()["name"] == "Transfer Test"
+        assert resp.json()["phone"] == "1234567"
 
 
 # ===========================================================================
