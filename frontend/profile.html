@@ -249,7 +249,7 @@
 
           <div class="text-center">
             <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
-            ${isLoggedIn() ? ` · <a href="/edit?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>` : ''}
+            ${isLoggedIn() ? ` · <a href="/contact-form?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>` : ''}
             ${isLoggedIn() ? ` · <a href="/history?id=${contact.id}" class="text-gray-600 hover:underline"> Historial</a>` : ''}
             ${isLoggedIn() ? ` · ${renderProfileDeletionButtons(contact)}` : ''}
             ${isLoggedIn() && getUser().id !== contact.user_id ? ` · <a onclick="openReportModal(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Reportar</a>` : ''}

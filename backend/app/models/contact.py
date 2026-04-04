@@ -8,7 +8,7 @@ class Contact(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    phone = Column(String(20), nullable=False)
+    phone = Column(String(20), nullable=True)
     email = Column(String(255))
     address = Column(String(255))
     city = Column(String(100))

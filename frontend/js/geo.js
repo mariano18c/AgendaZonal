@@ -171,3 +171,90 @@ function fitMapToContacts(map, contacts) {
     map.fitBounds(coords, { padding: [30, 30], maxZoom: 15 });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Editable Map (for contact form — draggable marker)
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize an editable Leaflet map with a draggable marker.
+ * Used by the unified contact form for geolocation input.
+ *
+ * @param {string} containerId - DOM element id for the map container
+ * @param {number} [initialLat] - Initial latitude (optional)
+ * @param {number} [initialLng] - Initial longitude (optional)
+ * @param {string} [latFieldId='latitude'] - ID of the latitude input field
+ * @param {string} [lngFieldId='longitude'] - ID of the longitude input field
+ * @returns {{ map: L.Map, marker: L.Marker, getLatLng: function }}
+ */
+function initEditMap(containerId, initialLat, initialLng, latFieldId = 'latitude', lngFieldId = 'longitude') {
+  const mapDiv = document.getElementById(containerId);
+  if (!mapDiv) return { map: null, marker: null, getLatLng: () => null };
+
+  // Destroy existing map instance stored on window
+  const mapKey = `_editMap_${containerId}`;
+  const markerKey = `_editMarker_${containerId}`;
+  if (window[mapKey]) {
+    window[mapKey].remove();
+  }
+
+  // Show map container
+  mapDiv.classList.remove('hidden');
+  mapDiv.style.display = 'block';
+
+  const centerLat = initialLat || -32.9575;
+  const centerLng = initialLng || -60.6391;
+
+  // Wait for DOM to update display
+  setTimeout(() => {
+    const map = L.map(containerId, { dragging: true, zoomControl: true }).setView([centerLat, centerLng], 15);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    let marker;
+    if (initialLat && initialLng) {
+      marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+    } else {
+      marker = L.marker([centerLat, centerLng], { draggable: true }).addTo(map);
+    }
+    marker.bindPopup('📍 Arrastrar para mover');
+
+    // Update fields when marker is dragged
+    marker.on('dragend', (e) => {
+      const pos = e.target.getLatLng();
+      const latInput = document.getElementById(latFieldId);
+      const lngInput = document.getElementById(lngFieldId);
+      if (latInput) latInput.value = pos.lat.toFixed(6);
+      if (lngInput) lngInput.value = pos.lng.toFixed(6);
+    });
+
+    // Click on map to move marker and update fields
+    map.on('click', function (e) {
+      const { lat, lng } = e.latlng;
+      const latInput = document.getElementById(latFieldId);
+      const lngInput = document.getElementById(lngFieldId);
+      if (latInput) latInput.value = lat.toFixed(6);
+      if (lngInput) lngInput.value = lng.toFixed(6);
+      marker.setLatLng([lat, lng]);
+      marker.bindPopup('📍 Nueva ubicación').openPopup();
+    });
+
+    window[mapKey] = map;
+    window[markerKey] = marker;
+
+    // Force map resize after init
+    setTimeout(() => map.invalidateSize(), 100);
+  }, 50);
+
+  return {
+    map: window[mapKey] || null,
+    marker: window[markerKey] || null,
+    getLatLng: () => {
+      const m = window[markerKey];
+      return m ? m.getLatLng() : null;
+    },
+  };
+}

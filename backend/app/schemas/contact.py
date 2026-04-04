@@ -13,8 +13,10 @@ def validate_url(value: str | None, field_name: str) -> str | None:
     return value
 
 
-def validate_phone(value: str) -> str:
+def validate_phone(value: str | None) -> str | None:
     """Validate phone contains only digits, spaces, dashes, parentheses"""
+    if value is None or value.strip() == '':
+        return None
     if not re.match(r'^[\d\s\-\(\)]+$', value):
         raise ValueError('El teléfono solo puede contener números, espacios, guiones y paréntesis')
     return value
@@ -35,7 +37,7 @@ def sanitize_text(value: str | None) -> str | None:
 
 class ContactCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
-    phone: str = Field(min_length=6, max_length=20)
+    phone: str | None = Field(None, max_length=20)
     email: EmailStr | None = None
     address: str | None = Field(None, max_length=255)
     city: str | None = Field(None, max_length=100)
@@ -117,7 +119,7 @@ class ContactResponse(BaseModel):
 
     id: int
     name: str
-    phone: str
+    phone: str | None = None
     email: str | None = None
     address: str | None = None
     city: str | None = None

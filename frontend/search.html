@@ -153,7 +153,8 @@
         }
 
         // Search via API
-        const contacts = await searchContactsGeo(pos.lat, pos.lon, radius);
+        const data = await searchContactsGeo(pos.lat, pos.lon, radius);
+        const contacts = data.contacts || data;
         status.textContent = `✅ ${contacts.length} resultado${contacts.length !== 1 ? 's' : ''} en radio de ${radius} km`;
 
         renderContacts(contacts);
@@ -260,7 +261,7 @@
             </div>
             <div class="flex gap-4 mt-6">
               <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
-              <a href="/edit?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>
+              <a href="/contact-form?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>
               ${isLoggedIn() ? `<a href="/history?id=${contact.id}" class="text-gray-600 hover:underline">Ver historial</a>` : ''}
             </div>
           </div>

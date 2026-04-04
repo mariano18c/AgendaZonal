@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from sqlalchemy.orm import Session
@@ -136,6 +136,7 @@ async def startup_security_check():
     
     # Auto-migrate: add missing review reply columns
     inspector = inspect(engine)
+
     if "reviews" in inspector.get_table_names():
         columns = [c["name"] for c in inspector.get_columns("reviews")]
         with engine.connect() as conn:
@@ -198,9 +199,13 @@ def index():
 def search_page():
     return serve_html("search.html")
 
+@app.get("/contact-form")
+def contact_form_page():
+    return serve_html("contact-form.html")
+
 @app.get("/add")
 def add_page():
-    return serve_html("add.html")
+    return RedirectResponse("/contact-form?mode=add", status_code=301)
 
 @app.get("/login")
 def login_page():
@@ -215,8 +220,9 @@ def history_page():
     return serve_html("history.html")
 
 @app.get("/edit")
-def edit_page():
-    return serve_html("edit.html")
+def edit_page(request: Request):
+    contact_id = request.query_params.get('id', '')
+    return RedirectResponse(f"/contact-form?id={contact_id}", status_code=301)
 
 @app.get("/pending")
 def pending_page():
@@ -294,7 +300,7 @@ def search_html():
 
 @app.get("/add.html")
 def add_html():
-    return serve_html("add.html")
+    return RedirectResponse("/contact-form?mode=add", status_code=301)
 
 @app.get("/login.html")
 def login_html():
@@ -309,8 +315,9 @@ def history_html():
     return serve_html("history.html")
 
 @app.get("/edit.html")
-def edit_html():
-    return serve_html("edit.html")
+def edit_html(request: Request):
+    contact_id = request.query_params.get('id', '')
+    return RedirectResponse(f"/contact-form?id={contact_id}", status_code=301)
 
 @app.get("/pending.html")
 def pending_html():

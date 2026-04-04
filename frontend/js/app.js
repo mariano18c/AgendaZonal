@@ -41,7 +41,7 @@ async function updateNavbar() {
       <div class="flex items-center gap-4">
         <span class="text-gray-700">Hola, ${user.username}</span>
         ${pendingBadge}
-        <a href="/add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
+        <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
         <button id="pwaInstallBtn" class="hidden text-green-600 hover:text-green-800" title="Instalar app">📲 Instalar</button>
         <button onclick="logout()" class="text-gray-600 hover:text-gray-800">Salir</button>
