@@ -153,3 +153,55 @@ class TestMarkAllAsRead:
     def test_requires_auth(self, client):
         resp = client.put("/api/notifications/read-all")
         assert resp.status_code == 401
+
+
+class TestPushNotifications:
+    """VAPID public key, subscribe, unsubscribe lifecycle."""
+
+    def test_get_vapid_public_key(self, client):
+        resp = client.get("/api/notifications/vapid-public-key")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "public_key" in data
+        assert len(data["public_key"]) > 0
+
+    def test_subscribe_push_notification(self, client, auth_headers):
+        headers = auth_headers(username="push_sub", email="pushsub@test.com")
+
+        resp = client.post("/api/notifications/subscribe", headers=headers, json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/test123",
+            "keys": {
+                "p256dh": "BTestPublicKey123456789012345678901234567890",
+                "auth": "TestAuthKey12345678",
+            },
+        })
+        assert resp.status_code in [200, 201]
+
+    def test_unsubscribe_push_notification(self, client, auth_headers):
+        headers = auth_headers(username="push_unsub", email="pushunsub@test.com")
+
+        # Subscribe first
+        client.post("/api/notifications/subscribe", headers=headers, json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/unsub123",
+            "keys": {
+                "p256dh": "BTestPublicKeyUnsub123456789012345678901234",
+                "auth": "TestAuthKeyUnsub123",
+            },
+        })
+
+        # Unsubscribe
+        resp = client.post("/api/notifications/unsubscribe", headers=headers, json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/unsub123",
+            "keys": {
+                "p256dh": "BTestPublicKeyUnsub123456789012345678901234",
+                "auth": "TestAuthKeyUnsub123",
+            },
+        })
+        assert resp.status_code in [200, 204]
+
+    def test_subscribe_requires_auth(self, client):
+        resp = client.post("/api/notifications/subscribe", json={
+            "endpoint": "https://example.com/test",
+            "keys": {"p256dh": "test", "auth": "test"},
+        })
+        assert resp.status_code == 401

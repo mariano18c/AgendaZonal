@@ -28,6 +28,10 @@ from app.models.user import User
 from app.models.category import Category
 from app.models.contact import Contact, ContactHistory
 from app.models.contact_change import ContactChange
+from app.models.review import Review
+from app.models.offer import Offer
+from app.models.report import Report
+from app.models.utility_item import UtilityItem
 
 
 # ---------------------------------------------------------------------------
@@ -346,4 +350,223 @@ def change_factory(client: TestClient):
         if changes_resp.status_code == 200 and changes_resp.json():
             return changes_resp.json()[-1]["id"]
         return None
+    return _create
+
+
+# ---------------------------------------------------------------------------
+# CAPTCHA cleanup fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def captcha_cleanup():
+    """Clear CaptchaManager.CHALLENGES before and after each test.
+
+    Prevents cross-test contamination from accumulated CAPTCHA challenges.
+    """
+    from app.captcha import CaptchaManager
+    CaptchaManager.CHALLENGES.clear()
+    yield
+    CaptchaManager.CHALLENGES.clear()
+
+
+# ---------------------------------------------------------------------------
+# Data factory fixtures (direct DB creation)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def create_contact(database_session: Session):
+    """Factory fixture to create contacts directly in the database.
+
+    Creates a Contact with valid defaults, linked to a user.
+    If user_id is not provided, creates a new user automatically.
+    """
+    def _create(
+        name: str = "Test Contact",
+        phone: str = "1234567",
+        user_id: int | None = None,
+        category_id: int | None = None,
+        email: str = "",
+        address: str = "",
+        city: str = "",
+        neighborhood: str = "",
+        description: str = "",
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> Contact:
+        if user_id is None:
+            user = User(
+                username=f"contact_owner_{name[:8]}",
+                email=f"contact_{name[:8]}@test.com",
+                phone_area_code="0341",
+                phone_number="9999999",
+                password_hash=_hash_password("password123"),
+                role="user",
+            )
+            database_session.add(user)
+            database_session.commit()
+            database_session.refresh(user)
+            user_id = user.id
+
+        # If no category_id provided, get first available category
+        if category_id is None:
+            from app.models.category import Category
+            cat = database_session.query(Category).first()
+            if cat:
+                category_id = cat.id
+
+        contact = Contact(
+            name=name,
+            phone=phone,
+            user_id=user_id,
+            category_id=category_id,
+            email=email,
+            address=address,
+            city=city,
+            neighborhood=neighborhood,
+            description=description,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        database_session.add(contact)
+        database_session.commit()
+        database_session.refresh(contact)
+        return contact
+    return _create
+
+
+@pytest.fixture
+def create_review(database_session: Session):
+    """Factory fixture to create reviews linked to a contact and user."""
+    def _create(
+        contact_id: int,
+        user_id: int | None = None,
+        rating: int = 5,
+        comment: str = "Great service!",
+        status: str = "pending",
+    ) -> Review:
+        from app.models.review import Review
+
+        if user_id is None:
+            user = User(
+                username=f"reviewer_{contact_id}",
+                email=f"reviewer_{contact_id}@test.com",
+                phone_area_code="0341",
+                phone_number="8888888",
+                password_hash=_hash_password("password123"),
+                role="user",
+            )
+            database_session.add(user)
+            database_session.commit()
+            database_session.refresh(user)
+            user_id = user.id
+
+        review = Review(
+            contact_id=contact_id,
+            user_id=user_id,
+            rating=rating,
+            comment=comment,
+            status=status,
+        )
+        database_session.add(review)
+        database_session.commit()
+        database_session.refresh(review)
+        return review
+    return _create
+
+
+@pytest.fixture
+def create_offer(database_session: Session):
+    """Factory fixture to create offers with future expires_at."""
+    def _create(
+        contact_id: int,
+        title: str = "Special Offer",
+        description: str = "20% off",
+        discount_pct: float = 20.0,
+        expires_in_days: int = 7,
+        active: bool = True,
+    ) -> Offer:
+        from app.models.offer import Offer
+        from datetime import datetime, timedelta, timezone
+
+        offer = Offer(
+            contact_id=contact_id,
+            title=title,
+            description=description,
+            discount_pct=discount_pct,
+            starts_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=expires_in_days),
+            active=active,
+        )
+        database_session.add(offer)
+        database_session.commit()
+        database_session.refresh(offer)
+        return offer
+    return _create
+
+
+@pytest.fixture
+def create_report(database_session: Session):
+    """Factory fixture to create reports for a contact."""
+    def _create(
+        contact_id: int,
+        reporter_id: int | None = None,
+        reason: str = "spam",
+        status: str = "pending",
+    ) -> Report:
+        from app.models.report import Report
+
+        if reporter_id is None:
+            user = User(
+                username=f"reporter_{contact_id}",
+                email=f"reporter_{contact_id}@test.com",
+                phone_area_code="0341",
+                phone_number="7777777",
+                password_hash=_hash_password("password123"),
+                role="user",
+            )
+            database_session.add(user)
+            database_session.commit()
+            database_session.refresh(user)
+            reporter_id = user.id
+
+        report = Report(
+            contact_id=contact_id,
+            reporter_id=reporter_id,
+            reason=reason,
+            status=status,
+        )
+        database_session.add(report)
+        database_session.commit()
+        database_session.refresh(report)
+        return report
+    return _create
+
+
+@pytest.fixture
+def create_utility(database_session: Session):
+    """Factory fixture to create UtilityItem with valid defaults."""
+    def _create(
+        name: str = "Test Utility",
+        type: str = "otro",
+        phone: str = "1234567",
+        address: str = "Test St 123",
+        schedule: str = "Lun-Vie 9-18",
+        city: str = "Rosario",
+        is_active: bool = True,
+    ) -> UtilityItem:
+        from app.models.utility_item import UtilityItem
+
+        item = UtilityItem(
+            name=name,
+            type=type,
+            phone=phone,
+            address=address,
+            schedule=schedule,
+            city=city,
+            is_active=is_active,
+        )
+        database_session.add(item)
+        database_session.commit()
+        database_session.refresh(item)
+        return item
     return _create

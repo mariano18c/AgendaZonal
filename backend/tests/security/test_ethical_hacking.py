@@ -1,8 +1,24 @@
 """Ethical hacking tests — attempt to penetrate the system for unauthorized data access."""
 import pytest
+import re
 import jwt
 from datetime import datetime, timedelta, timezone
 from app.config import JWT_SECRET, JWT_ALGORITHM
+
+
+def _parse_captcha_answer(question: str) -> int:
+    """Parse CAPTCHA question and return the answer."""
+    if ' + ' in question:
+        match = re.match(r'(\d+) \+ (\d+)', question)
+        return int(match.group(1)) + int(match.group(2))
+    elif ' - ' in question:
+        match = re.match(r'(\d+) - (\d+)', question)
+        return int(match.group(1)) - int(match.group(2))
+    elif ' × ' in question:
+        match = re.match(r'(\d+) × (\d+)', question)
+        return int(match.group(1)) * int(match.group(2))
+    else:
+        raise ValueError(f"Unknown CAPTCHA format: {question}")
 
 
 class TestPrivilegeEscalation:
@@ -288,7 +304,9 @@ class TestDOSResistance:
     def test_zero_limit_on_list(self, client):
         resp = client.get("/api/contacts?limit=0")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        # Endpoint returns {"contacts": [], "total": 0} format
+        assert data.get("contacts") == [] or data == []
 
     def test_negative_skip(self, client):
         resp = client.get("/api/contacts?skip=-1")
@@ -306,3 +324,58 @@ class TestDOSResistance:
                 "password": "wrong",
             })
             assert resp.status_code == 401
+
+
+class TestPathTraversal:
+    """Attempt to access files outside the frontend/ directory."""
+
+    @pytest.mark.security
+    def test_path_traversal_dot_dot_slash(self, client):
+        """Dot-dot-slash in page parameter should not serve system files."""
+        resp = client.get("/edit", params={"page": "../../etc/passwd"})
+        # Should either reject (400/404) or serve the default edit page (200)
+        # but NEVER serve a system file
+        assert resp.status_code in [200, 400, 404]
+        # Verify no system file content
+        assert "root:" not in resp.text
+
+    @pytest.mark.security
+    def test_path_traversal_null_byte(self, client):
+        """Null byte injection in path should not bypass file restrictions."""
+        resp = client.get("/edit", params={"page": "profile\x00.html"})
+        # Should either reject or serve default page
+        assert resp.status_code in [200, 400, 404]
+
+
+class TestBootstrapRateLimit:
+    """Rate limiting on admin bootstrap endpoint."""
+
+    @pytest.mark.security
+    def test_bootstrap_admin_rate_limit(self, client):
+        """Rapid bootstrap attempts should be throttled or rejected after first success."""
+        responses = []
+        for i in range(5):
+            captcha_resp = client.get("/api/auth/captcha")
+            if captcha_resp.status_code != 200:
+                break
+            captcha_data = captcha_resp.json()
+            answer = _parse_captcha_answer(captcha_data["question"])
+
+            resp = client.post("/api/auth/bootstrap-admin", json={
+                "username": f"bootstrap_test_{i}",
+                "email": f"bootstrap_{i}@test.com",
+                "phone_area_code": "0341",
+                "phone_number": f"555555{i}",
+                "password": "bootstrap123",
+                "captcha_challenge_id": captcha_data["challenge_id"],
+                "captcha_answer": str(answer),
+            })
+            responses.append(resp)
+
+        # After the first success, subsequent ones should be rejected
+        # (400 = already exists, 403 = already bootstrapped, 429 = rate limited)
+        if len(responses) > 1:
+            later_responses = responses[1:]
+            assert all(
+                r.status_code in [400, 403, 409, 429, 503] for r in later_responses
+            ), f"Expected rejection after first, got statuses: {[r.status_code for r in responses]}"

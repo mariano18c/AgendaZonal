@@ -191,6 +191,17 @@ class TestMassivePayloads:
         resp = client.post("/api/contacts", headers=h, json=nested)
         assert resp.status_code == 422
 
+    @pytest.mark.security
+    def test_massive_json_payload_1000_keys(self, client, auth_headers):
+        """Send JSON with 1000+ keys, verify 422 or graceful handling."""
+        h = auth_headers(username="fuzzmassive1k", email="fuzzmassive1k@test.com")
+        payload = {"name": "Massive", "phone": "1234567"}
+        for i in range(1000):
+            payload[f"key_{i}"] = "x" * 100
+        resp = client.post("/api/contacts", headers=h, json=payload)
+        assert resp.status_code in [201, 422, 400]
+        # Should not crash or hang
+
 
 class TestUnicodeAndSpecialChars:
 
