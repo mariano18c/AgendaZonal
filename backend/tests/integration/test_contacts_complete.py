@@ -25,7 +25,7 @@ class TestContactHistory:
 
         resp = client.get(f"/api/contacts/{cid}/history", headers=h)
         assert resp.status_code == 200
-        history = resp.json()
+        history = resp.json()["history"]
         assert any(
             h["field_name"] == "name" and h["new_value"] == "Modified"
             for h in history
@@ -42,7 +42,7 @@ class TestContactHistory:
         client.put(f"/api/contacts/{cid}", headers=h, json={"name": "New Name"})
 
         resp = client.get(f"/api/contacts/{cid}/history", headers=h)
-        history = resp.json()
+        history = resp.json()["history"]
         name_change = next(
             (h for h in history if h["field_name"] == "name"), None
         )
@@ -67,7 +67,7 @@ class TestContactHistory:
 
         resp = client.get(f"/api/contacts/{cid}/history", headers=h)
         assert resp.status_code == 200
-        history = resp.json()
+        history = resp.json()["history"]
         name_changes = [h for h in history if h["field_name"] == "name"]
         # Should have at least 2 name changes (from Original -> Second -> Third)
         assert len(name_changes) >= 1

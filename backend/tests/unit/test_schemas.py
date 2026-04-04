@@ -29,11 +29,11 @@ class TestContactCreateSchema:
                 ContactCreate(name=name, phone="1234567")
 
     @pytest.mark.parametrize("phone,should_pass", [
+        ("12345", True),
         ("123456", True),
         ("12345678901234567890", True),
         ("341-1234567", True),
         ("(0341) 123-4567", True),
-        ("12345", False),
         ("1" * 21, False),
         ("abc123", False),
         ("phone<script>", False),

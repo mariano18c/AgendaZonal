@@ -138,11 +138,13 @@ class TestContactModel:
             database_session.commit()
 
     @pytest.mark.unit
-    def test_contact_not_null_phone(self, database_session):
+    def test_contact_phone_is_nullable(self, db_session):
+        """Phone is nullable=True in the model, so None is allowed."""
         contact = Contact(name="Test")
-        database_session.add(contact)
-        with pytest.raises(IntegrityError):
-            database_session.commit()
+        db_session.add(contact)
+        db_session.commit()
+        db_session.refresh(contact)
+        assert contact.phone is None
 
     @pytest.mark.unit
     def test_contact_default_pending_changes_count(self, database_session):

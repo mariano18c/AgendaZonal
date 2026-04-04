@@ -10,24 +10,24 @@ from app.models.contact import Contact
 class TestExportContacts:
     """GET /api/contacts/export — requires authentication."""
 
-    def test_export_csv(self, client, create_user, database_session, auth_headers):
+    def test_export_csv(self, client, create_user, db_session, auth_headers):
         user = create_user()
         headers = auth_headers(username="exportuser", email="exportuser@test.com")
         contact = Contact(name="Test Export", phone="1234567", user_id=user.id, city="Rosario")
-        database_session.add(contact)
-        database_session.commit()
+        db_session.add(contact)
+        db_session.commit()
 
         resp = client.get("/api/contacts/export?format=csv", headers=headers)
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["content-type"]
         assert "Test Export" in resp.text
 
-    def test_export_json(self, client, create_user, database_session, auth_headers):
+    def test_export_json(self, client, create_user, db_session, auth_headers):
         user = create_user()
         headers = auth_headers(username="exportjson", email="exportjson@test.com")
         contact = Contact(name="JSON Test", phone="1234567", user_id=user.id)
-        database_session.add(contact)
-        database_session.commit()
+        db_session.add(contact)
+        db_session.commit()
 
         resp = client.get("/api/contacts/export?format=json", headers=headers)
         assert resp.status_code == 200
@@ -45,17 +45,17 @@ class TestExportContacts:
         resp = client.get("/api/contacts/export?format=xml", headers=headers)
         assert resp.status_code == 422
 
-    def test_export_filtered_by_category(self, client, create_user, database_session, auth_headers):
+    def test_export_filtered_by_category(self, client, create_user, db_session, auth_headers):
         from app.models.category import Category
-        cat = database_session.query(Category).filter(Category.code == 100).first()
+        cat = db_session.query(Category).filter(Category.code == 100).first()
         assert cat is not None, "Category 100 should be seeded"
 
         user = create_user()
         headers = auth_headers(username="exportcat", email="exportcat@test.com")
         cat1 = Contact(name="Plumber", phone="1111111", user_id=user.id, category_id=cat.id)
         cat2_contact = Contact(name="Barber", phone="2222222", user_id=user.id)
-        database_session.add_all([cat1, cat2_contact])
-        database_session.commit()
+        db_session.add_all([cat1, cat2_contact])
+        db_session.commit()
 
         resp = client.get(f"/api/contacts/export?format=json&category_id={cat.id}", headers=headers)
         assert resp.status_code == 200
@@ -71,12 +71,12 @@ class TestExportContacts:
         data = resp.json()
         assert isinstance(data, list)
 
-    def test_csv_has_header_row(self, client, create_user, database_session, auth_headers):
+    def test_csv_has_header_row(self, client, create_user, db_session, auth_headers):
         user = create_user()
         headers = auth_headers(username="exportcsvhdr", email="exportcsvhdr@test.com")
         contact = Contact(name="CSV Test", phone="1234567", user_id=user.id)
-        database_session.add(contact)
-        database_session.commit()
+        db_session.add(contact)
+        db_session.commit()
 
         resp = client.get("/api/contacts/export?format=csv", headers=headers)
         assert resp.status_code == 200
@@ -86,13 +86,13 @@ class TestExportContacts:
         assert "phone" in header
 
     @pytest.mark.data_exfil
-    def test_export_no_sensitive_fields(self, client, create_user, database_session, auth_headers):
+    def test_export_no_sensitive_fields(self, client, create_user, db_session, auth_headers):
         """Exported CSV must NOT contain password_hash or other sensitive fields."""
         user = create_user()
         headers = auth_headers(username="exportsens", email="exportsens@test.com")
         contact = Contact(name="Sensitive Test", phone="1234567", user_id=user.id, city="Rosario")
-        database_session.add(contact)
-        database_session.commit()
+        db_session.add(contact)
+        db_session.commit()
 
         # CSV export — should be safe
         resp = client.get("/api/contacts/export?format=csv", headers=headers)

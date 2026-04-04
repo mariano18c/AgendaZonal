@@ -14,30 +14,24 @@ class TestBootstrapAdminRateLimit:
 
     def test_bootstrap_admin_has_rate_limit(self, client):
         """bootstrap-admin should return 429 after exceeding rate limit."""
-        # First call succeeds (DB is empty) — this is expected
-        resp = client.post("/api/auth/bootstrap-admin", json={
-            "username": "firstadmin",
-            "email": "firstadmin@test.com",
-            "phone_area_code": "0341",
-            "phone_number": "1111111",
-            "password": "adminpass123",
-        })
-        assert resp.status_code == 201  # First call always succeeds
-
-        # Subsequent calls should be 403 (users exist) or 429 (rate limited)
-        got_403_or_429 = False
-        for i in range(5):
+        # The endpoint may already have an admin (from other tests), so first call
+        # could be 403. We test rate limiting by spamming the endpoint.
+        statuses = []
+        for i in range(8):
             resp = client.post("/api/auth/bootstrap-admin", json={
-                "username": f"admin{i}",
-                "email": f"admin{i}@test.com",
+                "username": f"ratelimit{i}",
+                "email": f"ratelimit{i}@test.com",
                 "phone_area_code": "0341",
-                "phone_number": "1111111",
+                "phone_number": f"111111{i}",
                 "password": "adminpass123",
             })
-            if resp.status_code in [403, 429]:
-                got_403_or_429 = True
+            statuses.append(resp.status_code)
 
-        assert got_403_or_429, "bootstrap-admin should return 403 or 429 after first call"
+        # Should hit rate limit (429) or consistently get 403 (admin exists)
+        got_429 = 429 in statuses
+        got_403 = all(s in [403, 429] for s in statuses)
+        assert got_429 or got_403, \
+            f"Expected rate limiting (429) or consistent 403, got {statuses}"
 
 
 class TestExportContactsAuth:
@@ -234,7 +228,7 @@ class TestSchedulesSchema:
 class TestProviderDashboard:
     """Test provider dashboard metrics."""
 
-    def test_dashboard_returns_metrics(self, client, auth_headers, contact_factory, database_session):
+    def test_dashboard_returns_metrics(self, client, auth_headers, contact_factory, db_session):
         """GET /api/provider/dashboard should return metrics for a provider."""
         headers = auth_headers(username="provider", email="provider@test.com")
         # Create a contact owned by this user
@@ -338,7 +332,7 @@ class TestOffersCRUD:
         assert len(data) >= 1
         assert data[0]["title"] == "Test Offer"
 
-    def test_list_offers_excludes_expired(self, client, auth_headers, database_session):
+    def test_list_offers_excludes_expired(self, client, auth_headers, db_session):
         """GET should not return expired offers."""
         contact_id, headers = self._create_contact_with_owner(client, auth_headers)
         past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -353,8 +347,8 @@ class TestOffersCRUD:
             expires_at=datetime.fromisoformat(past),
             is_active=True,
         )
-        database_session.add(offer)
-        database_session.commit()
+        db_session.add(offer)
+        db_session.commit()
 
         resp = client.get(f"/api/contacts/{contact_id}/offers")
         assert resp.status_code == 200
@@ -544,16 +538,16 @@ class TestPublicEndpoints:
 class TestFriendlyURLs:
     """Test friendly URL redirects."""
 
-    def test_slug_redirect(self, client, auth_headers, contact_factory, database_session):
+    def test_slug_redirect(self, client, auth_headers, contact_factory, db_session):
         """GET /c/{slug} should redirect to /profile?id=X."""
         headers = auth_headers(username="sluguser", email="sluguser@test.com")
         contact_id = contact_factory(headers=headers, name="Juan Perez", phone="1234567")
 
         # Set a slug
         from app.models.contact import Contact
-        contact = database_session.query(Contact).filter(Contact.id == contact_id).first()
+        contact = db_session.query(Contact).filter(Contact.id == contact_id).first()
         contact.slug = "juan-perez-plomero-1"
-        database_session.commit()
+        db_session.commit()
 
         resp = client.get("/c/juan-perez-plomero-1", follow_redirects=False)
         assert resp.status_code == 301
@@ -572,7 +566,7 @@ class TestFriendlyURLs:
 class TestReviewsBatchFetch:
     """Validate that reviews endpoint uses batch fetch (no N+1)."""
 
-    def test_list_reviews_with_multiple_reviews(self, client, create_user, contact_factory, auth_headers, database_session):
+    def test_list_reviews_with_multiple_reviews(self, client, create_user, contact_factory, auth_headers, db_session):
         """GET reviews should return enriched data with usernames."""
         # Create owner and contact
         owner_headers = auth_headers(username="reviewowner", email="reviewowner@test.com")
@@ -593,8 +587,8 @@ class TestReviewsBatchFetch:
                 comment=f"Review {i}",
                 is_approved=True,
             )
-            database_session.add(review)
-        database_session.commit()
+            db_session.add(review)
+        db_session.commit()
 
         resp = client.get(f"/api/contacts/{contact_id}/reviews")
         assert resp.status_code == 200

@@ -18,20 +18,20 @@ class TestBusqueda:
     def test_busqueda_por_nombre(self, client):
         resp = client.get("/api/contacts/search?q=Juan")
         assert resp.status_code == 200
-        assert any("Juan" in c["name"] for c in resp.json())
+        assert any("Juan" in c["name"] for c in resp.json()["contacts"])
 
     @pytest.mark.integration
     def test_busqueda_por_ciudad(self, client):
         resp = client.get("/api/contacts/search?q=Rosario")
         assert resp.status_code == 200
-        results = resp.json()
+        results = resp.json()["contacts"]
         assert len(results) >= 2
 
     @pytest.mark.integration
     def test_busqueda_por_categoria(self, client):
         resp = client.get("/api/contacts/search?category_id=1")
         assert resp.status_code == 200
-        for c in resp.json():
+        for c in resp.json()["contacts"]:
             assert c["category_id"] == 1
 
     @pytest.mark.integration
@@ -43,13 +43,13 @@ class TestBusqueda:
     def test_busqueda_sin_resultados(self, client):
         resp = client.get("/api/contacts/search?q=XYZNOEXISTE")
         assert resp.status_code == 200
-        assert len(resp.json()) == 0
+        assert len(resp.json()["contacts"]) == 0
 
     @pytest.mark.integration
     def test_busqueda_case_insensitive(self, client):
         resp = client.get("/api/contacts/search?q=juan")
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["contacts"]) >= 1
 
 
 class TestCategorias:

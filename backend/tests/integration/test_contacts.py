@@ -110,7 +110,7 @@ class TestListarContactos:
             })
         resp = client.get("/api/contacts")
         assert resp.status_code == 200
-        assert len(resp.json()) >= 3
+        assert len(resp.json()["contacts"]) >= 3
 
     @pytest.mark.integration
     def test_listar_con_limit(self, client, auth_headers):
@@ -122,7 +122,7 @@ class TestListarContactos:
             })
         resp = client.get("/api/contacts?limit=2")
         assert resp.status_code == 200
-        assert len(resp.json()) == 2
+        assert len(resp.json()["contacts"]) == 2
 
     @pytest.mark.integration
     def test_listar_con_limit_maximo(self, client):
@@ -144,7 +144,7 @@ class TestListarContactos:
         })
         resp = client.get("/api/contacts?category_id=1")
         assert resp.status_code == 200
-        for c in resp.json():
+        for c in resp.json()["contacts"]:
             assert c["category_id"] == 1
 
     @pytest.mark.integration
@@ -152,12 +152,13 @@ class TestListarContactos:
         headers = auth_headers()
         for i in range(5):
             client.post("/api/contacts", headers=headers, json={
-                "name": f"Skip{i}",
+                "name": f"SkipTest{i}",
                 "phone": f"12345{i}",
             })
-        all_resp = client.get("/api/contacts")
+        # Use same limit for both requests to compare properly
+        all_resp = client.get("/api/contacts?limit=100")
         skip_resp = client.get("/api/contacts?skip=2&limit=100")
-        assert len(skip_resp.json()) == len(all_resp.json()) - 2
+        assert len(skip_resp.json()["contacts"]) == len(all_resp.json()["contacts"]) - 2
 
 
 class TestActualizarContacto:
