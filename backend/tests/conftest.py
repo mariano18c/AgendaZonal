@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import StaticPool, NullPool
 
 from app.main import app
 from app.database import Base, get_db
@@ -125,14 +125,16 @@ def test_engine():
 
 @pytest.fixture(scope="function")
 def db_session(test_engine) -> Generator[Session, None, None]:
-    """Per-test database session with SAVEPOINT-based automatic rollback.
+    """Per-test database session with outer-transaction rollback.
 
-    Each test runs inside a nested transaction (savepoint). On teardown,
-    the savepoint is rolled back, undoing ALL changes — including cascades.
-    This is faster than recreating tables and provides true isolation.
+    Creates a NEW connection from the shared engine for each test.
+    The outer transaction is rolled back on teardown, undoing ALL changes.
+    Nested savepoints allow route-level commits without breaking isolation.
     """
+    # Create a NEW connection from the shared engine (StaticPool allows this)
     connection = test_engine.connect()
-    transaction = connection.begin()
+    outer_txn = connection.begin()
+
     session_factory = sessionmaker(
         bind=connection,
         autocommit=False,
@@ -141,10 +143,9 @@ def db_session(test_engine) -> Generator[Session, None, None]:
     )
     session = session_factory()
 
-    # Begin a savepoint for nested rollback
+    # Begin nested savepoint so route-level commits work
     session.begin_nested()
 
-    # Each flush() starts a new savepoint
     @event.listens_for(session, "after_transaction_end")
     def restart_savepoint(sess, trans):
         if trans.nested and not trans._parent.nested:
@@ -153,8 +154,12 @@ def db_session(test_engine) -> Generator[Session, None, None]:
     yield session
 
     session.close()
-    transaction.rollback()
+    outer_txn.rollback()
     connection.close()
+
+
+# Backward compatibility alias — existing tests use 'database_session'
+database_session = db_session
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +318,12 @@ def create_user(db_session: Session):
         phone_area_code: str = "0341",
         phone_number: str = "1234567",
     ) -> User:
+        # Clean up any existing user with same email/username first
+        db_session.query(User).filter(
+            (User.email == email) | (User.username == username)
+        ).delete()
+        db_session.commit()
+        
         user = User(
             username=username,
             email=email,
@@ -400,16 +411,27 @@ def admin_headers(db_session: Session, client: TestClient) -> dict[str, str]:
 
 
 @pytest.fixture
-def moderator_user(client: TestClient, create_user):
-    """Create a user with moderator role. Returns (user_obj, headers)."""
+def moderator_user(client: TestClient, create_user, db_session):
+    """Create a user with moderator role. Returns (user_obj, headers).
+    
+    Uses unique email to avoid UNIQUE constraint conflicts with StaticPool.
+    """
+    import uuid
+    unique_id = uuid.uuid4().hex[:8]
+    
+    # Clean any existing moderator from previous tests
+    from app.models.user import User
+    db_session.query(User).filter(User.email.like("mod_%@test.com")).delete()
+    db_session.commit()
+    
     user = create_user(
-        username="moderator",
-        email="mod@test.com",
+        username=f"mod_{unique_id}",
+        email=f"mod_{unique_id}@test.com",
         password="password123",
         role="moderator",
     )
     resp = client.post("/api/auth/login", json={
-        "username_or_email": "moderator",
+        "username_or_email": user.username,
         "password": "password123",
     })
     assert resp.status_code == 200
