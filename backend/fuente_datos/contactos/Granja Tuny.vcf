@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Tuny;Granja;;;
+FN:Granja Tuny
+item1.TEL:+54 9 549 490-4292
+item1.X-ABLabel:Casa
+item2.TEL;waid=5493416650714:+54 9 341 665-0714
+item2.X-ABLabel:Otro
+END:VCARD

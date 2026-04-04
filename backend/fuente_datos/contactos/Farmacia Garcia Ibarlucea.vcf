@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Ibarlucea;Farmacia;Garcia;;
+FN:Farmacia Garcia Ibarlucea
+item1.TEL:+54 9 341 490-4409
+item1.X-ABLabel:Casa
+item2.TEL;waid=5493415476988:+54 9 341 547-6988
+item2.X-ABLabel:Celular
+END:VCARD

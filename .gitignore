@@ -50,4 +50,6 @@ node_modules/
 *.db-wal
 
 # Misc
+.gga
 nul
+tasks_breadcrumbs.md

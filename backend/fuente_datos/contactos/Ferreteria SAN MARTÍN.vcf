@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+N:MARTÍN;Ferreteria;SAN;;
+FN:Ferreteria SAN MARTÍN
+item1.TEL;waid=5493416130919:+54 9 341 613-0919
+item1.X-ABLabel:Celular
+X-WA-BIZ-DESCRIPTION:Trabajamos con vos. Llamanos y con gusto atenderemos tu consulta
+X-WA-BIZ-NAME:Ferreteria SAN MARTÍN
+END:VCARD

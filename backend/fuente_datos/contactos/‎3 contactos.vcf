@@ -1,0 +1,26 @@
+BEGIN:VCARD
+VERSION:3.0
+N:;rotihouse;;;
+FN:rotihouse
+ORG:rotihouse
+TITLE:
+item1.TEL;waid=5493416407408:+54 9 341 640-7408
+item1.X-ABLabel:Celular
+X-WA-BIZ-NAME:rotihouse
+END:VCARDBEGIN:VCARD
+VERSION:3.0
+N:Bar;Estacion;Ibarlucea;;
+FN:Estacion Ibarlucea Bar
+ORG:Estacion Ibarlucea Bar
+TITLE:
+item1.TEL;waid=5493412165133:+54 9 341 216-5133
+item1.X-ABLabel:Celular
+END:VCARDBEGIN:VCARD
+VERSION:3.0
+N:Empanadetta;La;;;
+FN:La Empanadetta
+item1.TEL;waid=5493413113734:+54 9 341 311-3734
+item1.X-ABLabel:Celular
+X-WA-BIZ-DESCRIPTION:Empanadería Artesanal
+X-WA-BIZ-NAME:La Empanadetta
+END:VCARD
