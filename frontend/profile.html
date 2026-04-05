@@ -207,7 +207,10 @@
           </div>
 
           <div id="offersSection" class="hidden bg-white rounded-xl shadow-sm border p-6 mb-6">
-            <h2 class="font-semibold text-gray-800 mb-4">🏷️ Ofertas</h2>
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="font-semibold text-gray-800">🏷️ Ofertas</h2>
+              <button id="manageOffersBtn" onclick="openProfileOfferModal()" class="hidden text-purple-600 hover:text-purple-800 text-sm font-medium">✏️ Gestionar</button>
+            </div>
             <div id="offersContent"></div>
           </div>
 
@@ -251,7 +254,7 @@
             <a href="/search" class="text-blue-600 hover:underline">← Volver a la búsqueda</a>
             ${isLoggedIn() ? ` · <a href="/contact-form?id=${contact.id}" class="text-blue-600 hover:underline">✏️ Editar</a>` : ''}
             ${isLoggedIn() ? ` · <a href="/history?id=${contact.id}" class="text-gray-600 hover:underline"> Historial</a>` : ''}
-            ${isLoggedIn() ? ` · ${renderProfileDeletionButtons(contact)}` : ''}
+            ${isLoggedIn() ? ` · ${renderProfileOwnerButtons(contact)}` : ''}
             ${isLoggedIn() && getUser().id !== contact.user_id ? ` · <a onclick="openReportModal(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Reportar</a>` : ''}
           </div>
         `;
@@ -272,6 +275,14 @@
         const currentUser = getUser();
         if (isLoggedIn() && currentUser && currentUser.id !== contact.user_id) {
           document.getElementById('reviewFormContainer').classList.remove('hidden');
+        }
+
+        // Mostrar botón de gestionar ofertas si es owner o admin
+        const manageBtn = document.getElementById('manageOffersBtn');
+        if (currentUser && (currentUser.id === contact.user_id || currentUser.role === 'admin' || currentUser.role === 'moderator')) {
+          manageBtn.classList.remove('hidden');
+          window._profileContactId = contact.id;
+          window._profileContactName = contact.name;
         }
 
         document.title = `${contact.name} - Agenda de la zona`;
@@ -299,21 +310,93 @@
       return user && contact.user_id === user.id;
     }
 
-    function renderProfileDeletionButtons(contact) {
+    function renderProfileOwnerButtons(contact) {
       const user = getUser();
-      if (!user) return '';
-      const isAdminUser = isProfileAdmin();
-      const isContactOwner = isProfileOwner(contact);
+      if (!user || !contact) return '';
+      const isAdminUser = user.role === 'admin' || user.role === 'moderator';
+      const isContactOwner = user.id === contact.user_id;
       const isFlagged = contact.status === 'flagged';
       let buttons = '';
+      
+      // Transfer ownership (owner or admin)
+      if (isContactOwner || isAdminUser) {
+        buttons += `<a href="javascript:void(0)" onclick="openTransferModal(${contact.id}, ${contact.user_id})" class="text-purple-600 hover:underline cursor-pointer"> Transferir</a> · `;
+      }
+      
+      // Deletion buttons
       if (isFlagged) {
-        if (isContactOwner) buttons += `<a onclick="profileCancelDeletion(${contact.id})" class="text-green-600 hover:underline cursor-pointer"> Cancelar eliminación</a>`;
-        if (isAdminUser) buttons += `<a onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar definitivamente</a>`;
+        if (isContactOwner) buttons += `<a href="javascript:void(0)" onclick="profileCancelDeletion(${contact.id})" class="text-green-600 hover:underline cursor-pointer"> Cancelar eliminación</a>`;
+        if (isAdminUser) buttons += `<a href="javascript:void(0)" onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar</a>`;
       } else {
-        if (isContactOwner) buttons += `<a onclick="profileRequestDeletion(${contact.id})" class="text-red-600 hover:underline cursor-pointer">Solicitar eliminación</a>`;
-        if (isAdminUser) buttons += `<a onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar</a>`;
+        if (isContactOwner) buttons += `<a href="javascript:void(0)" onclick="profileRequestDeletion(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Solicitar eliminación</a>`;
+        if (isAdminUser) buttons += `<a href="javascript:void(0)" onclick="profileDeleteContact(${contact.id})" class="text-red-600 hover:underline cursor-pointer"> Eliminar</a>`;
       }
       return buttons;
+    }
+
+    // Transfer ownership modal and functions
+    let _transferContactId = null;
+
+    async function openTransferModal(contactId, currentOwnerId) {
+      console.log('openTransferModal called', contactId, currentOwnerId);
+      _transferContactId = contactId;
+      const modal = document.getElementById('transferModal');
+      const select = document.getElementById('transferOwnerSelect');
+      
+      select.innerHTML = '<option value="">Cargando usuarios...</option>';
+      document.getElementById('transferError').classList.add('hidden');
+      
+      try {
+        // Usar API pública que lista usuarios activos (para dropdowns)
+        const users = await apiRequest('/api/public/users');
+        console.log('Users loaded:', users);
+        
+        select.innerHTML = users
+          .map(u => `<option value="${u.id}" ${u.id === currentOwnerId ? 'selected' : ''}>${escapeHtml(u.username)}</option>`)
+          .join('') || '<option value="">No hay usuarios</option>';
+      } catch (err) {
+        console.error('Error loading users:', err);
+        select.innerHTML = '<option value="">Error al cargar</option>';
+      }
+      
+      // Mostrar modal forzando display
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+
+    function closeTransferModal() {
+      const modal = document.getElementById('transferModal');
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    async function handleTransferSubmit(e) {
+      e.preventDefault();
+      const newOwnerId = document.getElementById('transferOwnerSelect').value;
+      const errorEl = document.getElementById('transferError');
+      const btn = document.getElementById('transferSubmitBtn');
+      
+      if (!newOwnerId) {
+        errorEl.textContent = 'Seleccioná un usuario';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = 'Transferiendo...';
+      
+      try {
+        await transferContactOwnership(_transferContactId, parseInt(newOwnerId));
+        alert('Propiedad transferida correctamente');
+        closeTransferModal();
+        window.location.reload();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Transferir';
+      }
     }
 
     async function profileRequestDeletion(contactId) {
@@ -363,6 +446,181 @@
             </div>`;
         }).join('');
       } catch {}
+    }
+
+    // ---------- Gestión de ofertas desde perfil ----------
+    let _profileOffersCache = {};
+
+    async function openProfileOfferModal() {
+      const contactId = window._profileContactId;
+      const contactName = window._profileContactName;
+      if (!contactId) return;
+      
+      ensureOfferModalExists();
+      await openOfferModal(contactId, contactName);
+    }
+
+    function ensureOfferModalExists() {
+      if (document.getElementById('offerModal')) return;
+      
+      const modalHtml = `
+      <div id="offerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 id="offerModalTitle" class="text-lg font-semibold text-gray-800">🏷️ Ofertas</h3>
+            <button onclick="closeOfferModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+          </div>
+          <div id="offerModalContactName" class="text-sm text-gray-600 mb-4"></div>
+          <div id="offerList" class="space-y-3 mb-4"></div>
+          <div class="border-t pt-4">
+            <h4 id="offerFormTitle" class="font-medium text-gray-700 mb-3">Agregar nueva oferta</h4>
+            <form id="offerForm" onsubmit="handleProfileOfferSubmit(event)">
+              <input type="hidden" id="offerId">
+              <input type="hidden" id="offerContactId">
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <input type="text" id="offerTitle" maxlength="200" required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  placeholder="Ej: 20% de descuento">
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <textarea id="offerDescription" maxlength="500" rows="2"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  placeholder="Detalles..."></textarea>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">% Descuento</label>
+                  <input type="number" id="offerDiscount" min="1" max="99"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="10">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Expira *</label>
+                  <input type="datetime-local" id="offerExpiresAt" required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+              </div>
+              <div id="offerError" class="text-red-600 text-sm mb-3 hidden"></div>
+              <div class="flex gap-2">
+                <button type="submit" id="offerSubmitBtn" class="flex-1 px-4 py-2 text-white rounded-lg font-medium cursor-pointer border-none" style="background-color: #2563eb;">Guardar</button>
+                <button type="button" onclick="closeOfferModal()" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>`;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    async function openOfferModal(contactId, contactName) {
+      const modal = document.getElementById('offerModal');
+      document.getElementById('offerModalTitle').textContent = '🏷️ Ofertas';
+      document.getElementById('offerModalContactName').textContent = 'Contacto: ' + contactName;
+      document.getElementById('offerContactId').value = contactId;
+      resetOfferForm();
+      await loadOffersForContact(contactId);
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeOfferModal() {
+      const modal = document.getElementById('offerModal');
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    async function loadOffersForContact(contactId) {
+      const listEl = document.getElementById('offerList');
+      try {
+        const offers = await apiRequest('/api/contacts/' + contactId + '/offers');
+        _profileOffersCache[contactId] = offers;
+        if (offers.length === 0) {
+          listEl.innerHTML = '<p class="text-gray-500 text-sm">No hay ofertas. Agregá una abajo.</p>';
+          return;
+        }
+        const now = new Date();
+        listEl.innerHTML = offers.map(function(o) {
+          const exp = new Date(o.expires_at);
+          const diff = exp - now;
+          const days = Math.floor(diff / 86400000);
+          const hours = Math.floor((diff % 86400000) / 3600000);
+          let countdown = exp < now ? '<span class="text-red-500 text-xs">Expirada</span>' :
+            days > 0 ? '<span class="text-orange-600 text-xs">Expira en ' + days + ' día' + (days > 1 ? 's' : '') + '</span>' :
+            hours > 0 ? '<span class="text-red-500 text-xs">Expira en ' + hours + 'h</span>' :
+            '<span class="text-red-600 text-xs font-medium">¡Expira pronto!</span>';
+          return '<div class="border rounded-lg p-3 ' + (o.discount_pct ? 'bg-green-50 border-green-200' : 'bg-gray-50') + '">' +
+            '<div class="flex justify-between"><div><div class="font-medium">' + escapeHtml(o.title) + '</div>' +
+            (o.description ? '<div class="text-sm text-gray-600">' + escapeHtml(o.description) + '</div>' : '') +
+            '<div class="mt-1">' + (o.discount_pct ? '<span class="bg-green-600 text-white text-xs px-2 rounded">' + o.discount_pct + '% OFF</span>' : '') + 
+            ' <span class="ml-1">' + countdown + '</span></div></div>' +
+            '<div class="flex gap-1"><button onclick="editOffer(' + o.id + ',' + contactId + ')" class="text-blue-600 text-xs px-1">✏️</button>' +
+            '<button onclick="deleteOffer(' + o.id + ',' + contactId + ')" class="text-red-600 text-xs px-1">🗑️</button></div></div></div>';
+        }).join('');
+      } catch (err) { listEl.innerHTML = '<p class="text-red-500 text-sm">Error</p>'; }
+    }
+
+    function editOffer(offerId, contactId) {
+      const offer = (_profileOffersCache[contactId] || []).find(function(o) { return o.id === offerId; });
+      if (!offer) return;
+      document.getElementById('offerId').value = offer.id;
+      document.getElementById('offerTitle').value = offer.title;
+      document.getElementById('offerDescription').value = offer.description || '';
+      document.getElementById('offerDiscount').value = offer.discount_pct || '';
+      const d = new Date(offer.expires_at);
+      document.getElementById('offerExpiresAt').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      document.getElementById('offerFormTitle').textContent = 'Editar oferta';
+      document.getElementById('offerSubmitBtn').textContent = 'Actualizar';
+    }
+
+    async function deleteOffer(offerId, contactId) {
+      if (!confirm('¿Eliminar?')) return;
+      try {
+        await apiRequest('/api/contacts/' + contactId + '/offers/' + offerId, { method: 'DELETE' });
+        await loadOffersForContact(contactId);
+        loadOffers(contactId);
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
+    function resetOfferForm() {
+      document.getElementById('offerForm').reset();
+      document.getElementById('offerId').value = '';
+      document.getElementById('offerFormTitle').textContent = 'Agregar nueva oferta';
+      document.getElementById('offerSubmitBtn').textContent = 'Guardar';
+      document.getElementById('offerError').classList.add('hidden');
+      const now = new Date(); now.setHours(now.getHours() + 1);
+      document.getElementById('offerExpiresAt').min = now.toISOString().slice(0, 16);
+    }
+
+    async function handleProfileOfferSubmit(e) {
+      e.preventDefault();
+      const offerId = document.getElementById('offerId').value;
+      const contactId = document.getElementById('offerContactId').value;
+      const title = document.getElementById('offerTitle').value.trim();
+      const expiresAt = document.getElementById('offerExpiresAt').value;
+      const errorEl = document.getElementById('offerError');
+      const btn = document.getElementById('offerSubmitBtn');
+      
+      if (!title || !expiresAt) { errorEl.textContent = 'Título y fecha requeridos'; errorEl.classList.remove('hidden'); return; }
+      if (new Date(expiresAt) <= new Date()) { errorEl.textContent = 'La fecha debe ser futura'; errorEl.classList.remove('hidden'); return; }
+      
+      const payload = {
+        title: title,
+        description: document.getElementById('offerDescription').value.trim() || null,
+        discount_pct: document.getElementById('offerDiscount').value ? parseInt(document.getElementById('offerDiscount').value) : null,
+        expires_at: new Date(expiresAt).toISOString(),
+      };
+      
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      try {
+        if (offerId) await apiRequest('/api/contacts/' + contactId + '/offers/' + offerId, { method: 'PUT', body: JSON.stringify(payload) });
+        else await apiRequest('/api/contacts/' + contactId + '/offers', { method: 'POST', body: JSON.stringify(payload) });
+        resetOfferForm();
+        await loadOffersForContact(contactId);
+        loadOffers(contactId);
+      } catch (err) { errorEl.textContent = err.message; errorEl.classList.remove('hidden'); }
+      finally { btn.disabled = false; btn.textContent = offerId ? 'Actualizar' : 'Guardar'; }
     }
 
     function setRating(n) {
@@ -706,6 +964,30 @@
         <button onclick="closeReportModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition">Cancelar</button>
         <button id="reportSubmitBtn" onclick="submitReport()" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">Enviar reporte</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Transfer ownership modal -->
+  <div id="transferModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">🔄 Transferir Propiedad</h3>
+      <p class="text-sm text-gray-600 mb-4">El nuevo propietario podrá editar y gestionar este contacto.</p>
+      <form onsubmit="handleTransferSubmit(event)">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Nuevo propietario *</label>
+          <select id="transferOwnerSelect" required
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+            <option value="">Seleccionar usuario</option>
+          </select>
+        </div>
+        <div id="transferError" class="text-red-600 text-sm mb-4 hidden"></div>
+        <div class="flex gap-3 justify-end mt-6">
+          <button type="button" onclick="closeTransferModal()" 
+            style="padding: 8px 16px; background-color: #e5e7eb; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button type="submit" id="transferSubmitBtn" 
+            style="padding: 8px 24px; background-color: #2563eb; color: white; border: none; border-radius: 6px; font-weight: 500; cursor: pointer;">Aceptar</button>
+        </div>
+      </form>
     </div>
   </div>
 </body>

@@ -22,30 +22,124 @@
     <div id="dashboardContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
     <div id="pagination" class="mt-4"></div>
   </main>
+
+  <!-- Modal para gestionar ofertas -->
+  <div id="offerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="offerModalTitle" class="text-lg font-semibold text-gray-800">🏷️ Ofertas</h3>
+        <button onclick="closeOfferModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+      </div>
+      <div id="offerModalContactName" class="text-sm text-gray-600 mb-4"></div>
+      
+      <!-- Lista de ofertas existentes -->
+      <div id="offerList" class="space-y-3 mb-4"></div>
+      
+      <!-- Formulario para nueva/editar oferta -->
+      <div class="border-t pt-4">
+        <h4 id="offerFormTitle" class="font-medium text-gray-700 mb-3">Agregar nueva oferta</h4>
+        <form id="offerForm" onsubmit="handleOfferSubmit(event)">
+          <input type="hidden" id="offerId">
+          <input type="hidden" id="offerContactId">
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+            <input type="text" id="offerTitle" maxlength="200" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="Ej: 20% de descuento en reparaciones">
+          </div>
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+            <textarea id="offerDescription" maxlength="500" rows="2"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="Detalles de la oferta..."></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">% Descuento</label>
+              <input type="number" id="offerDiscount" min="1" max="99"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                placeholder="10">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Expira *</label>
+              <input type="datetime-local" id="offerExpiresAt" required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+            </div>
+          </div>
+          <div id="offerError" class="text-red-600 text-sm mb-3 hidden"></div>
+          <div class="flex gap-2">
+            <button type="submit" id="offerSubmitBtn" class="flex-1 px-4 py-2 text-white rounded-lg font-medium cursor-pointer border-none" style="background-color: #2563eb;">Guardar Oferta</button>
+            <button type="button" onclick="closeOfferModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentPage = 1;
+    let _allContacts = [];
     const itemsPerPage = 20;
+
+    // Inicializar fecha mínima (ahora + 1 hora)
+    function getMinDateTime() {
+      const now = new Date();
+      now.setHours(now.getHours() + 1);
+      return now.toISOString().slice(0, 16);
+    }
+
+    // Setear fecha mínima en el input
+    document.addEventListener('DOMContentLoaded', () => {
+      const expiresInput = document.getElementById('offerExpiresAt');
+      if (expiresInput) {
+        expiresInput.min = getMinDateTime();
+      }
+    });
 
     async function loadDashboard(page = 1) {
       currentPage = page;
       const container = document.getElementById('dashboardContainer');
       if (!isLoggedIn()) { container.innerHTML = '<div class="text-center py-10 text-red-500">Debes iniciar sesión</div>'; return; }
       const skip = (page - 1) * itemsPerPage;
+      
+      // Get filter values (check if elements exist first)
+      const searchInput = document.getElementById('searchInput');
+      const sortSelect = document.getElementById('sortSelect');
+      const search = searchInput ? searchInput.value.trim() : '';
+      const sort = sortSelect ? sortSelect.value : '';
+      
+      // Save current filter values before re-render
+      const savedSearch = search;
+      const savedSort = sort;
+      
+      // Build query params
+      let params = `contacts_skip=${skip}&contacts_limit=${itemsPerPage}`;
+      if (search) params += `&search=${encodeURIComponent(search)}`;
+      if (sort) params += `&sort=${sort}`;
+      
       try {
-        const data = await apiRequest(`/api/provider/dashboard?contacts_skip=${skip}&contacts_limit=${itemsPerPage}`);
+        const data = await apiRequest(`/api/provider/dashboard?${params}`);
+        console.log('Dashboard data:', data);
         const { leads_this_month, leads_last_month, avg_rating, total_reviews, active_offers, contacts, total_contacts, leads_by_week, recent_reviews } = data;
+        _allContacts = contacts || [];
         container.innerHTML = `
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-blue-600">${leads_this_month}</div><div class="text-sm text-gray-500">Leads este mes</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-green-600">${leads_last_month}</div><div class="text-sm text-gray-500">Leads mes anterior</div></div>
-            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-yellow-600">${avg_rating ? avg_rating.toFixed(1) : 'N/A'}</div><div class="text-sm text-gray-500">Rating promedio</div></div>
+            <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-yellow-600">${avg_rating !== undefined && avg_rating !== null ? (avg_rating > 0 ? avg_rating.toFixed(1) : '0.0') : 'N/A'}</div><div class="text-sm text-gray-500">Rating promedio</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-purple-600">${active_offers}</div><div class="text-sm text-gray-500">Ofertas activas</div></div>
           </div>
-          ${leads_by_week && leads_by_week.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6 mb-6"><h2 class="font-semibold text-gray-800 mb-4">📈 Leads por Semana</h2><div class="space-y-3">${leads_by_week.map(w => {
+          ${leads_by_week && leads_by_week.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6 mb-6"><h2 class="font-semibold text-gray-800 mb-4">📈 Leads por Semana (Total: ${leads_by_week.reduce((a,b) => a + b.count, 0)})</h2><div class="space-y-3">${leads_by_week.map(w => {
             const maxVal = Math.max(...leads_by_week.map(x => x.count), 1);
             const pct = Math.max((w.count / maxVal) * 100, 2);
-            const label = w.week_start ? new Date(w.week_start).toLocaleDateString('es-AR', {day:'2-digit', month:'short'}) : '';
-            return `<div class="flex items-center gap-3"><span class="text-xs text-gray-500 w-20 text-right">${label}</span><div class="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden"><div class="bg-blue-500 h-full rounded-full flex items-center justify-end pr-2" style="width:${pct}%"><span class="text-xs text-white font-medium">${w.count}</span></div></div></div>`;
+            const label = w.week_start || '';
+            const textColor = w.count > 0 ? '#1e40af' : '#6b7280';
+            // Color según cantidad de leads (verde=alto, amarillo=medio, rojo=bajo)
+            let barColor = '#22c55e'; // verde por defecto
+            if (w.count === 0) barColor = '#9ca3af'; // gris si no hay
+            else if (pct < 33) barColor = '#ef4444'; // rojo bajo
+            else if (pct < 66) barColor = '#f59e0b'; // amarillo medio
+            return `<div class="flex items-center gap-3"><span class="text-xs text-gray-500 w-20 text-right">${label}</span><div class="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden relative"><div class="h-full rounded-full absolute left-0 transition-all duration-500" style="width:${pct}%; background-color:${barColor};"></div><span class="text-xs font-bold absolute left-2" style="color:${textColor}; z-index:1;">${w.count}</span></div></div>`;
           }).join('')}</div></div>` : ''}
           ${recent_reviews && recent_reviews.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6 mb-6"><h2 class="font-semibold text-gray-800 mb-4">⭐ Reseñas Recientes</h2><div class="space-y-3">${recent_reviews.slice(0, 10).map(r => {
             const s = (v) => escapeHtml(v || '');
@@ -54,9 +148,31 @@
             const date = r.created_at ? new Date(r.created_at).toLocaleDateString('es-AR') : '';
             return `<div class="border-b pb-3 last:border-0"><div class="flex justify-between items-start mb-1"><div><span class="font-medium text-sm text-gray-700">${s(r.contact_name || 'Contacto')}</span><span class="text-xs text-gray-400 ml-2">por ${s(r.username || 'Anónimo')}</span></div><span class="text-yellow-500 text-sm">${stars}</span></div>${comment ? `<p class="text-gray-600 text-sm">${s(comment)}</p>` : ''}<span class="text-gray-400 text-xs">${date}</span></div>`;
           }).join('')}</div></div>` : ''}
-          ${contacts && contacts.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6"><h2 class="font-semibold text-gray-800 mb-4">Mis Contactos (${total_contacts})</h2><div class="space-y-2">${contacts.map(c => {
+          ${contacts && contacts.length > 0 ? `<div class="bg-white rounded-lg shadow-sm border p-6"><h2 class="font-semibold text-gray-800 mb-4">Mis Contactos (${total_contacts})</h2>
+            <div class="flex flex-wrap gap-2 mb-4">
+              <input type="text" id="searchInput" placeholder="Buscar por nombre..." value="${escapeHtml(savedSearch || '')}"
+                class="flex-1 min-w-[150px] px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                onkeypress="if(event.key==='Enter')loadDashboard(1)">
+              <select id="sortSelect" onchange="loadDashboard(1)"
+                class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="" ${!savedSort ? 'selected' : ''}>Ordenar...</option>
+                <option value="leads_desc" ${savedSort === 'leads_desc' ? 'selected' : ''}>Más leads</option>
+                <option value="name_asc" ${savedSort === 'name_asc' ? 'selected' : ''}>Nombre A-Z</option>
+              </select>
+              <button onclick="loadDashboard(1)" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Buscar</button>
+            </div>
+            <div class="space-y-2">${contacts.map(c => {
             const s = (v) => escapeHtml(v || '');
-            return `<div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 border-b last:border-0"><a href="/profile?id=${c.id}" class="font-medium text-gray-800 hover:text-blue-600">${s(c.name)}</a><span class="text-sm text-gray-500">${c.leads_count || 0} leads</span></div>`;
+            return `<div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 border-b last:border-0">
+              <div class="flex items-center gap-3">
+                <a href="/profile?id=${c.id}" class="font-medium text-gray-800 hover:text-blue-600">${s(c.name)}</a>
+                ${c.active_offers > 0 ? `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">${c.active_offers} oferta${c.active_offers > 1 ? 's' : ''}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-500">${c.leads_count || 0} leads</span>
+                <button onclick="openOfferModal(${c.id}, '${s(c.name).replace(/'/g, "\\'")}')" class="text-purple-600 hover:text-purple-800 text-sm px-2 py-1 border border-purple-200 rounded hover:bg-purple-50" title="Gestionar ofertas">🏷️ Ofertas</button>
+              </div>
+            </div>`;
           }).join('')}</div></div>` : ''}`;
         renderPagination('pagination', page, total_contacts, itemsPerPage, (p) => loadDashboard(p));
       } catch (err) {
@@ -75,6 +191,203 @@
         }
       }
     }
+
+    // ---------- Gestión de Ofertas ----------
+    let _offersCache = {}; // cache por contactId
+
+    async function openOfferModal(contactId, contactName) {
+      const modal = document.getElementById('offerModal');
+      const title = document.getElementById('offerModalTitle');
+      const nameDiv = document.getElementById('offerModalContactName');
+      
+      title.textContent = '🏷️ Ofertas';
+      nameDiv.textContent = `Contacto: ${contactName}`;
+      
+      document.getElementById('offerContactId').value = contactId;
+      resetOfferForm();
+      
+      // Cargar ofertas existentes
+      await loadOffersForContact(contactId);
+      
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeOfferModal() {
+      const modal = document.getElementById('offerModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    async function loadOffersForContact(contactId) {
+      const listEl = document.getElementById('offerList');
+      try {
+        const offers = await apiRequest(`/api/contacts/${contactId}/offers`);
+        _offersCache[contactId] = offers;
+        
+        if (offers.length === 0) {
+          listEl.innerHTML = '<p class="text-gray-500 text-sm">No hay ofertas activas. Agregá una abajo.</p>';
+          return;
+        }
+        
+        const now = new Date();
+        listEl.innerHTML = offers.map(o => {
+          const expiresAt = new Date(o.expires_at);
+          const isExpired = expiresAt < now;
+          const diffMs = expiresAt - now;
+          const diffDays = Math.floor(diffMs / 86400000);
+          const diffHours = Math.floor((diffMs % 86400000) / 3600000);
+          
+          let countdown = '';
+          if (isExpired) {
+            countdown = '<span class="text-red-500 text-xs">Expirada</span>';
+          } else if (diffDays > 0) {
+            countdown = `<span class="text-orange-600 text-xs">Expira en ${diffDays} día${diffDays > 1 ? 's' : ''}</span>`;
+          } else if (diffHours > 0) {
+            countdown = `<span class="text-red-500 text-xs">Expira en ${diffHours} hora${diffHours > 1 ? 's' : ''}</span>`;
+          } else {
+            countdown = '<span class="text-red-600 text-xs font-medium">¡Expira pronto!</span>';
+          }
+          
+          return `
+            <div class="border rounded-lg p-3 ${o.discount_pct ? 'bg-green-50 border-green-200' : 'bg-gray-50'}">
+              <div class="flex justify-between items-start">
+                <div class="flex-1">
+                  <div class="font-medium text-gray-800">${escapeHtml(o.title)}</div>
+                  ${o.description ? `<div class="text-gray-600 text-sm">${escapeHtml(o.description)}</div>` : ''}
+                  <div class="mt-1">
+                    ${o.discount_pct ? `<span class="bg-green-600 text-white text-xs px-2 py-0.5 rounded-full">${o.discount_pct}% OFF</span>` : ''}
+                    <span class="ml-2">${countdown}</span>
+                  </div>
+                </div>
+                <div class="flex gap-1 ml-2">
+                  <button onclick="editOffer(${o.id}, ${contactId})" class="text-blue-600 hover:text-blue-800 text-xs px-2 py-1">✏️</button>
+                  <button onclick="deleteOffer(${o.id}, ${contactId})" class="text-red-600 hover:text-red-800 text-xs px-2 py-1">🗑️</button>
+                </div>
+              </div>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        listEl.innerHTML = '<p class="text-red-500 text-sm">Error al cargar ofertas</p>';
+      }
+    }
+
+    function editOffer(offerId, contactId) {
+      const offers = _offersCache[contactId] || [];
+      const offer = offers.find(o => o.id === offerId);
+      if (!offer) return;
+      
+      document.getElementById('offerId').value = offer.id;
+      document.getElementById('offerTitle').value = offer.title;
+      document.getElementById('offerDescription').value = offer.description || '';
+      document.getElementById('offerDiscount').value = offer.discount_pct || '';
+      
+      // Convertir fecha UTC a local para el input datetime-local
+      const expiresAt = new Date(offer.expires_at);
+      const localDate = new Date(expiresAt.getTime() - expiresAt.getTimezoneOffset() * 60000);
+      document.getElementById('offerExpiresAt').value = localDate.toISOString().slice(0, 16);
+      
+      document.getElementById('offerFormTitle').textContent = 'Editar oferta';
+      document.getElementById('offerSubmitBtn').textContent = 'Actualizar Oferta';
+      
+      // Scroll al formulario
+      document.getElementById('offerForm').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function deleteOffer(offerId, contactId) {
+      if (!confirm('¿Eliminar esta oferta?')) return;
+      
+      try {
+        await apiRequest(`/api/contacts/${contactId}/offers/${offerId}`, { method: 'DELETE' });
+        await loadOffersForContact(contactId);
+        loadDashboard(currentPage); // Recargar dashboard para actualizar contador
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    function resetOfferForm() {
+      document.getElementById('offerForm').reset();
+      document.getElementById('offerId').value = '';
+      document.getElementById('offerFormTitle').textContent = 'Agregar nueva oferta';
+      document.getElementById('offerSubmitBtn').textContent = 'Guardar Oferta';
+      document.getElementById('offerError').classList.add('hidden');
+      document.getElementById('offerExpiresAt').min = getMinDateTime();
+    }
+
+    async function handleOfferSubmit(e) {
+      e.preventDefault();
+      
+      const offerId = document.getElementById('offerId').value;
+      const contactId = document.getElementById('offerContactId').value;
+      const title = document.getElementById('offerTitle').value.trim();
+      const description = document.getElementById('offerDescription').value.trim() || null;
+      const discount = document.getElementById('offerDiscount').value;
+      const expiresAt = document.getElementById('offerExpiresAt').value;
+      
+      const errorEl = document.getElementById('offerError');
+      const btn = document.getElementById('offerSubmitBtn');
+      
+      // Validaciones
+      if (!title) {
+        errorEl.textContent = 'El título es obligatorio';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      
+      if (!expiresAt) {
+        errorEl.textContent = 'La fecha de expiración es obligatoria';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      
+      // Validar que no sea en el pasado
+      const expiresDate = new Date(expiresAt);
+      const now = new Date();
+      if (expiresDate <= now) {
+        errorEl.textContent = 'La fecha de expiración debe ser futura';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      
+      const payload = {
+        title,
+        description,
+        discount_pct: discount ? parseInt(discount) : null,
+        expires_at: new Date(expiresAt).toISOString(),
+      };
+      
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+      errorEl.classList.add('hidden');
+      
+      try {
+        if (offerId) {
+          // Editar oferta existente
+          await apiRequest(`/api/contacts/${contactId}/offers/${offerId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+          });
+        } else {
+          // Crear nueva oferta
+          await apiRequest(`/api/contacts/${contactId}/offers`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+        }
+        
+        resetOfferForm();
+        await loadOffersForContact(contactId);
+        loadDashboard(currentPage); // Recargar para actualizar contador
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = offerId ? 'Actualizar Oferta' : 'Guardar Oferta';
+      }
+    }
+
     loadDashboard();
   </script>
     <script>

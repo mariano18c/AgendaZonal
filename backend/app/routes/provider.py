@@ -19,18 +19,37 @@ router = APIRouter(tags=["provider"])
 def get_provider_dashboard(
     contacts_skip: int = Query(0, ge=0),
     contacts_limit: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, description="Filter contacts by name"),
+    sort: str | None = Query(None, description="Sort: leads_desc, name_asc"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get dashboard metrics for a provider (user with contacts)."""
     # Get all contacts owned by this user
-    contacts = db.query(Contact).filter(Contact.user_id == user.id).all()
+    query = db.query(Contact).filter(Contact.user_id == user.id)
+    
+    # Filter by name if provided
+    if search:
+        query = query.filter(Contact.name.ilike(f"%{search}%"))
+    
+    contacts = query.all()
     if not contacts:
         raise HTTPException(
             status_code=404,
             detail="No tienes contactos registrados. Creá un contacto primero."
         )
-
+    
+    # Sort contacts if requested
+    if sort == "name_asc":
+        contacts = sorted(contacts, key=lambda c: c.name.lower())
+    elif sort == "leads_desc":
+        # Need to count leads for each contact to sort
+        lead_counts = {}
+        for c in contacts:
+            count = db.query(sqlfunc.count(LeadEvent.id)).filter(LeadEvent.contact_id == c.id).scalar() or 0
+            lead_counts[c.id] = count
+        contacts = sorted(contacts, key=lambda c: lead_counts.get(c.id, 0), reverse=True)
+    
     contact_ids = [c.id for c in contacts]
     now = datetime.now(timezone.utc)
 
@@ -57,6 +76,10 @@ def get_provider_dashboard(
         )
         .scalar() or 0
     )
+
+    # Average rating across all contacts
+    ratings = [c.avg_rating for c in contacts if c.avg_rating and c.avg_rating > 0]
+    avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else 0
 
     # Active offers
     active_offers = (
@@ -116,6 +139,22 @@ def get_provider_dashboard(
     paginated_contacts = contacts[contacts_skip:contacts_skip + contacts_limit]
     contact_summary = []
     for c in paginated_contacts:
+        # Count leads for this contact
+        leads_count = (
+            db.query(sqlfunc.count(LeadEvent.id))
+            .filter(LeadEvent.contact_id == c.id)
+            .scalar() or 0
+        )
+        # Count active offers for this contact
+        contact_active_offers = (
+            db.query(sqlfunc.count(Offer.id))
+            .filter(
+                Offer.contact_id == c.id,
+                Offer.is_active == True,
+                Offer.expires_at > now,
+            )
+            .scalar() or 0
+        )
         contact_summary.append({
             "id": c.id,
             "name": c.name,
@@ -123,6 +162,8 @@ def get_provider_dashboard(
             "review_count": c.review_count,
             "verification_level": c.verification_level,
             "status": c.status,
+            "leads_count": leads_count,
+            "active_offers": contact_active_offers,
         })
 
     return {
@@ -130,6 +171,8 @@ def get_provider_dashboard(
         "total_contacts": total_contacts,
         "leads_this_month": leads_this_month,
         "leads_last_month": leads_last_month,
+        "avg_rating": avg_rating,
+        "total_reviews": sum(c.review_count for c in contacts if c.review_count),
         "active_offers": active_offers,
         "leads_by_week": leads_by_week,
         "recent_reviews": review_list,

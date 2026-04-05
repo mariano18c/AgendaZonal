@@ -852,22 +852,32 @@ def transfer_ownership(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Transfer ownership of a contact to another user (admin only).
+    """Transfer ownership of a contact to another user.
+    
+    - Owner can transfer to any user
+    - Admin/moderator can also transfer
     
     Body: { "new_owner_id": 123 }
     """
-    if user.role not in ['admin', 'moderator']:
-        raise HTTPException(status_code=403, detail="Solo administradores pueden transferir propiedad")
-    
-    new_owner_id = data.new_owner_id
-    
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
     
+    # Check permission: owner or admin/moderator
+    is_owner = contact.user_id == user.id
+    is_admin = user.role in ['admin', 'moderator']
+    if not is_owner and not is_admin:
+        raise HTTPException(status_code=403, detail="Solo el propietario o un administrador pueden transferir")
+    
+    new_owner_id = data.new_owner_id
+    
     new_owner = db.query(User).filter(User.id == new_owner_id).first()
     if not new_owner:
         raise HTTPException(status_code=404, detail="Usuario nuevo propietario no encontrado")
+    
+    # Can't transfer to self
+    if new_owner_id == contact.user_id:
+        raise HTTPException(status_code=400, detail="Ya es el propietario actual")
     
     old_owner_id = contact.user_id
     contact.user_id = new_owner_id

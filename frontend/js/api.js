@@ -292,3 +292,10 @@ async function reportContact(contactId, reason, details) {
 async function getCaptcha() {
   return apiRequest('/api/auth/captcha');
 }
+
+async function transferContactOwnership(contactId, newOwnerId) {
+  return apiRequest(`/api/contacts/${contactId}/transfer-ownership`, {
+    method: 'PUT',
+    body: JSON.stringify({ new_owner_id: newOwnerId }),
+  });
+}
