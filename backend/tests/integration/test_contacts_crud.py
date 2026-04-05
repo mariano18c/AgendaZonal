@@ -1,8 +1,7 @@
 """Integration tests — Contacts CRUD, search, geo, schedules, photos, changes."""
 import pytest
-from app.models.contact import Contact
+from app.models.contact import Contact, ContactHistory
 from app.models.contact_change import ContactChange
-from app.models.contact_history import ContactHistory
 
 
 class TestContactCreate:

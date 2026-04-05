@@ -13,7 +13,16 @@ class TestAdminUsers:
             "phone_number": "1234567",
             "password": "password123",
         })
-        token = resp.json()["token"]
+        if resp.status_code == 201:
+            token = resp.json()["token"]
+            return {"Authorization": f"Bearer {token}"}
+        # Admin already exists — try login
+        login_resp = client.post("/api/auth/login", json={
+            "username_or_email": "adminmain",
+            "password": "password123",
+        })
+        assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
+        token = login_resp.json()["token"]
         return {"Authorization": f"Bearer {token}"}
 
     @pytest.mark.integration

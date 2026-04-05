@@ -18,6 +18,7 @@ import os
 os.environ["TESTING"] = "1"
 
 import re
+import uuid
 import bcrypt
 import jwt
 import pytest
@@ -379,15 +380,23 @@ def admin_headers(db_session: Session, client: TestClient) -> dict[str, str]:
 
     Creates the admin user directly in the DB to avoid rate limiting
     on the bootstrap-admin endpoint.
+
+    Idempotent: cleans up any existing user with same email/username first
+    to avoid UNIQUE constraint conflicts with StaticPool SQLite when tests
+    run sequentially and other fixtures create users via API endpoints
+    (which commit outside the savepoint mechanism).
     """
     import bcrypt
     from app.models.user import User
 
-    # Check if admin exists in current transaction
-    existing = db_session.query(User).filter(User.role == "admin").first()
-    if existing:
-        token = create_token(existing.id)
-        return {"Authorization": f"Bearer {token}"}
+    admin_email = "admin@test.com"
+    admin_username = "adminuser"
+
+    # Clean up any existing user with same email/username to ensure idempotency
+    db_session.query(User).filter(
+        (User.email == admin_email) | (User.username == admin_username)
+    ).delete()
+    db_session.commit()
 
     # Create admin directly in DB
     password_hash = bcrypt.hashpw(
@@ -395,8 +404,8 @@ def admin_headers(db_session: Session, client: TestClient) -> dict[str, str]:
         bcrypt.gensalt(),
     ).decode("utf-8")
     admin = User(
-        username="adminuser",
-        email="admin@test.com",
+        username=admin_username,
+        email=admin_email,
         phone_area_code="0341",
         phone_number="1111111",
         password_hash=password_hash,
@@ -469,9 +478,10 @@ def create_contact(db_session: Session):
         verification_level: int = 0,
     ) -> Contact:
         if user_id is None:
+            unique_id = uuid.uuid4().hex[:8]
             user = User(
-                username=f"contact_owner_{name[:8]}_{id}",
-                email=f"contact_{name[:8]}_{id}@test.com",
+                username=f"contact_owner_{unique_id}",
+                email=f"contact_{unique_id}@test.com",
                 phone_area_code="0341",
                 phone_number="9999999",
                 password_hash=_hash_password("password123"),
@@ -527,9 +537,10 @@ def create_review(db_session: Session):
         reply_text: str | None = None,
     ) -> Review:
         if user_id is None:
+            unique_id = uuid.uuid4().hex[:8]
             user = User(
-                username=f"reviewer_{contact_id}_{id}",
-                email=f"reviewer_{contact_id}_{id}@test.com",
+                username=f"reviewer_{contact_id}_{unique_id}",
+                email=f"reviewer_{contact_id}_{unique_id}@test.com",
                 phone_area_code="0341",
                 phone_number="8888888",
                 password_hash=_hash_password("password123"),
@@ -604,9 +615,10 @@ def create_report(db_session: Session):
         is_resolved: bool = False,
     ) -> Report:
         if user_id is None:
+            unique_id = uuid.uuid4().hex[:8]
             user = User(
-                username=f"reporter_{contact_id}_{id}",
-                email=f"reporter_{contact_id}_{id}@test.com",
+                username=f"reporter_{contact_id}_{unique_id}",
+                email=f"reporter_{contact_id}_{unique_id}@test.com",
                 phone_area_code="0341",
                 phone_number="7777777",
                 password_hash=_hash_password("password123"),
@@ -825,18 +837,25 @@ def bootstrap_admin_once(client: TestClient, db_session: Session):
 
     Idempotent: works whether admin already exists or not.
     Handles rate limiting (429) gracefully by falling back to login.
+    Cleans up existing users with same email/username to avoid UNIQUE constraint
+    conflicts when tests run sequentially with StaticPool SQLite.
     """
-    # Check if admin already exists in current session
-    existing_admin = db_session.query(User).filter(User.role == "admin").first()
-    if existing_admin:
-        token = create_token(existing_admin.id)
-        return {"Authorization": f"Bearer {token}"}
+    from app.models.user import User as UserModel
+
+    admin_email = "admin@test.com"
+    admin_username = "adminuser"
+
+    # Clean up any existing user with same email/username first
+    db_session.query(UserModel).filter(
+        (UserModel.email == admin_email) | (UserModel.username == admin_username)
+    ).delete()
+    db_session.commit()
 
     # Try to bootstrap
     captcha = _get_captcha_and_answer(client)
     resp = client.post("/api/auth/bootstrap-admin", json={
-        "username": "adminuser",
-        "email": "admin@test.com",
+        "username": admin_username,
+        "email": admin_email,
         "phone_area_code": "0341",
         "phone_number": "1111111",
         "password": "adminpass123",
@@ -851,7 +870,7 @@ def bootstrap_admin_once(client: TestClient, db_session: Session):
     # 429 (rate limited) or 403 (already exists) — try login
     if resp.status_code in [429, 403]:
         login_resp = client.post("/api/auth/login", json={
-            "username_or_email": "adminuser",
+            "username_or_email": admin_username,
             "password": "adminpass123",
         })
         if login_resp.status_code == 200:

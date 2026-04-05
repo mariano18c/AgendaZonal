@@ -44,12 +44,15 @@
       <div class="text-center text-gray-500 col-span-full">Cargando categorías...</div>
     </div>
 
+    <!-- Sección de Últimos registros temporalmente oculta -->
+    <!--
     <div class="mt-10">
       <h2 class="text-xl font-semibold text-gray-800 mb-4">Últimos registros</h2>
       <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="text-center text-gray-500 col-span-full">Cargando contactos...</div>
       </div>
     </div>
+    -->
 
     <div class="mt-10">
       <div class="flex items-center justify-between mb-4">
@@ -102,7 +105,7 @@
         const contacts = await getContacts();
         const grid = document.getElementById('contactsGrid');
         if (contacts.length === 0) {
-          grid.innerHTML = '<div class="text-gray-500 col-span-full">No hay contactos registrados aún</div>';
+          grid.innerHTML = '<div class="text-center text-blue-500 col-span-full py-8">📭 No hay contactos registrados todavía.<br><span class="text-gray-500 text-sm">¡Sé el primero en agregar uno!</span></div>';
           return;
         }
         grid.innerHTML = contacts.slice(0, 6).map(c => `
@@ -115,7 +118,7 @@
         `).join('');
       } catch (err) {
         document.getElementById('contactsGrid').innerHTML =
-          '<div class="text-red-500 col-span-full">Error al cargar contactos</div>';
+          '<div class="text-center text-amber-600 col-span-full py-8">⚠️ No se pudieron cargar los contactos.<br><span class="text-gray-500 text-sm">Intentalo más tarde.</span></div>';
       }
     }
 
@@ -154,7 +157,7 @@
     }
 
     loadCategories();
-    loadRecentContacts();
+    // loadRecentContacts(); // Deshabilitado temporalmente
     loadUtilities();
   </script>
 </body>
