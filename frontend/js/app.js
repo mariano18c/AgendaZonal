@@ -6,26 +6,12 @@ async function updateNavbar() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (isLoggedIn && user) {
-    // Check for pending changes
-    let pendingBadge = '';
     let adminLink = '';
-    
-    try {
-      const pending = await getPendingContacts();
-      if (pending.length > 0) {
-        const totalCount = pending.reduce((sum, c) => sum + c.pending_changes_count, 0);
-        pendingBadge = `<a href="/pending" class="relative text-yellow-600 hover:text-yellow-800">
-          ⏳ Pendientes
-          <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full px-1.5">${totalCount}</span>
-        </a>`;
-      }
-    } catch (err) {
-      // User doesn't have permission to see pending
-    }
     
     // Admin/moderator links
     if (user.role === 'admin' || user.role === 'moderator') {
       adminLink = `
+        <a href="/pending" class="text-yellow-600 hover:text-yellow-800">⏳ Pendientes</a>
         <a href="/dashboard" class="text-gray-600 hover:text-gray-800">📊 Dashboard</a>
         <a href="/admin/reviews" class="text-gray-600 hover:text-gray-800">⭐ Reseñas</a>
         <a href="/admin/reports" class="text-gray-600 hover:text-gray-800">🚩 Reportes</a>
@@ -44,7 +30,6 @@ async function updateNavbar() {
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
         <span class="text-gray-700">Hola, ${user.username}</span>
-        ${pendingBadge}
         <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
         ${pushBtnHtml}
