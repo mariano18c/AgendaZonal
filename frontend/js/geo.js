@@ -202,8 +202,8 @@ function initEditMap(containerId, initialLat, initialLng, latFieldId = 'latitude
   mapDiv.classList.remove('hidden');
   mapDiv.style.display = 'block';
 
-  const centerLat = initialLat || -32.9575;
-  const centerLng = initialLng || -60.6391;
+  const centerLat = initialLat || -32.853436;
+  const centerLng = initialLng || -60.78656;
 
   // Wait for DOM to update display
   setTimeout(() => {

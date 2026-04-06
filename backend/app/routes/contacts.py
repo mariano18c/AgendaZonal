@@ -419,6 +419,11 @@ def edit_contact(
             continue
             
         current_value = getattr(contact, field_name)
+        
+        # Skip permission check if value didn't change
+        if str(current_value) == str(new_value):
+            continue
+        
         can_edit, needs_verification = can_edit_field(current_user, contact, field_name, current_value)
         
         if not can_edit:
