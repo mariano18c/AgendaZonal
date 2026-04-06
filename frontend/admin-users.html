@@ -432,45 +432,69 @@
 
     async function handleDeactivate(userId, username) {
       if (!confirm(`¿Desactivar usuario ${username}?`)) return;
+      
+      const btn = event.target.closest('button');
+      setButtonLoading(btn, true);
+
       try {
         await deactivateUser(userId);
-        showAlert('Usuario desactivado', 'success');
-        loadUsers();
+        showInlineAlert('✅ Usuario desactivado', 'success');
+        await loadUsers();
       } catch (err) {
-        showAlert(err.message, 'error');
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
     async function handleActivate(userId, username) {
       if (!confirm(`¿Reactivar usuario ${username}?`)) return;
+      
+      const btn = event.target.closest('button');
+      setButtonLoading(btn, true);
+
       try {
         await activateUser(userId);
-        showAlert('Usuario reactivado', 'success');
-        loadUsers();
+        showInlineAlert('✅ Usuario reactivado', 'success');
+        await loadUsers();
       } catch (err) {
-        showAlert(err.message, 'error');
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
     async function handleApprove(userId, username) {
       if (!confirm(`¿Aprobar el alta de usuario ${username}?`)) return;
+      
+      const btn = event.target.closest('button');
+      setButtonLoading(btn, true);
+
       try {
         await approveUser(userId);
-        showAlert('Usuario aprobado exitosamente', 'success');
-        loadUsers();
+        showInlineAlert('✅ Usuario aprobado correctamente', 'success');
+        await loadUsers();
       } catch (err) {
-        showAlert(err.message, 'error');
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
     async function handleReject(userId, username) {
       if (!confirm(`¿Rechazar el alta de usuario ${username}? Esta acción no se puede deshacer.`)) return;
+      
+      const btn = event.target.closest('button');
+      setButtonLoading(btn, true);
+
       try {
         await rejectUser(userId);
-        showAlert('Alta de usuario rechazada', 'success');
-        loadUsers();
+        showInlineAlert('✅ Alta de usuario rechazada', 'success');
+        await loadUsers();
       } catch (err) {
-        showAlert(err.message, 'error');
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+      } finally {
+        setButtonLoading(btn, false);
       }
     }
 
