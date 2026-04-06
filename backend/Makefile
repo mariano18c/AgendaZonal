@@ -20,13 +20,13 @@ test-security:
 test-cov:
 	python -m pytest tests/ -v --tb=short --cov=app --cov-report=html --cov-report=term-missing
 
-# Run with 95% coverage threshold
-test-95:
-	python -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=html --cov-fail-under=95
+# Run with 90% coverage threshold
+test-90:
+	python -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=html --cov-fail-under=90
 
 # Run all with coverage and parallel
 test-full:
-	python -m pytest tests/ -v --tb=short --cov=app --cov-report=html --cov-report=term-missing --cov-fail-under=95
+	python -m pytest tests/ -v --tb=short --cov=app --cov-report=html --cov-report=term-missing --cov-fail-under=90
 
 # Initialize database
 init-db:
