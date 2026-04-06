@@ -83,9 +83,21 @@
 
         <button type="submit"
           class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium">
-          Crear Cuenta
+          Registrarse
         </button>
       </form>
+
+      <div id="pendingMessage" class="hidden text-center">
+        <div class="mb-4">
+          <svg class="mx-auto h-16 w-16 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <p id="pendingText" class="text-gray-600 mb-6 text-lg"></p>
+        <a href="/login" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium">
+          Ir al login
+        </a>
+      </div>
 
       <div class="mt-6 text-center text-gray-600">
         ¿Ya tenés cuenta? <a href="/login" class="text-blue-600 hover:underline">Iniciá sesión</a>
@@ -154,8 +166,11 @@
       };
 
       try {
-        await register(data);
-        window.location.href = '/';
+        const result = await register(data);
+        // Show pending approval message instead of redirecting
+        document.getElementById('registerForm').classList.add('hidden');
+        document.getElementById('pendingText').textContent = result.message || 'Tu cuenta está pendiente de aprobación por un administrador. Podrás iniciar sesión cuando sea activada.';
+        document.getElementById('pendingMessage').classList.remove('hidden');
       } catch (err) {
         const msg = err.message;
         if (msg.includes('CAPTCHA') || msg.includes('expirado') || msg.includes('Desafío')) {

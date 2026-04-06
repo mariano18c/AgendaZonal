@@ -43,3 +43,9 @@ class UserResponse(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: UserResponse
+
+
+class PendingRegistrationResponse(BaseModel):
+    """Response for pending user registration — no token returned."""
+    message: str
+    username: str

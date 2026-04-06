@@ -39,11 +39,12 @@ class TestCaptchaEndpoints:
 class TestRegister:
     def test_register_success(self, client):
         data = register_user(client)
-        assert "token" in data
-        assert data["user"]["role"] == "user"
-        assert data["user"]["is_active"] is True
+        assert "message" in data
+        assert "username" in data
+        assert "token" not in data
+        assert "pendiente" in data["message"].lower()
 
-    def test_register_sets_cookie(self, client):
+    def test_register_no_cookie(self, client):
         cap = solve_captcha(client)
         r = client.post("/api/auth/register", json={
             "username": "cookieuser", "email": "cookie@test.com",
@@ -53,7 +54,23 @@ class TestRegister:
             "captcha_answer": cap["answer"],
         })
         assert r.status_code == 201
-        assert "auth_token" in r.cookies
+        assert "auth_token" not in r.cookies
+
+    def test_register_creates_pending_user(self, client, db_session):
+        """Verify registration creates user with is_active=False."""
+        from app.models.user import User
+        cap = solve_captcha(client)
+        client.post("/api/auth/register", json={
+            "username": "pendinguser", "email": "pending@test.com",
+            "phone_area_code": "0341", "phone_number": "1234567",
+            "password": "password123",
+            "captcha_challenge_id": cap["challenge_id"],
+            "captcha_answer": cap["answer"],
+        })
+        user = db_session.query(User).filter(User.username == "pendinguser").first()
+        assert user is not None
+        assert user.is_active is False
+        assert user.deactivated_at is None
 
     def test_register_duplicate_email(self, client):
         data = register_user(client, email="dup@test.com")
@@ -89,11 +106,6 @@ class TestRegister:
         })
         assert r.status_code == 422
 
-    def test_register_role_always_user(self, client):
-        """Verify that even if role is passed, it's ignored."""
-        data = register_user(client)
-        assert data["user"]["role"] == "user"
-
     def test_register_wrong_captcha(self, client):
         cap = solve_captcha(client)
         r = client.post("/api/auth/register", json={
@@ -108,18 +120,24 @@ class TestRegister:
 
 
 class TestLogin:
-    def test_login_by_email(self, client):
-        register_user(client, email="login@test.com", password="mypassword1")
-        data = login_user(client, "login@test.com", "mypassword1")
-        assert "token" in data
+    def test_login_by_email(self, client, create_user):
+        u = create_user(email="login@test.com")
+        r = client.post("/api/auth/login", json={
+            "username_or_email": "login@test.com", "password": "password123",
+        })
+        assert r.status_code == 200
+        assert "token" in r.json()
 
-    def test_login_by_username(self, client):
-        reg = register_user(client, username="loginuser", password="mypassword1")
-        data = login_user(client, "loginuser", "mypassword1")
-        assert "token" in data
+    def test_login_by_username(self, client, create_user):
+        u = create_user(username="loginuser")
+        r = client.post("/api/auth/login", json={
+            "username_or_email": "loginuser", "password": "password123",
+        })
+        assert r.status_code == 200
+        assert "token" in r.json()
 
-    def test_login_wrong_password(self, client):
-        register_user(client, email="wp@test.com")
+    def test_login_wrong_password(self, client, create_user):
+        create_user(email="wp@test.com")
         r = client.post("/api/auth/login", json={
             "username_or_email": "wp@test.com", "password": "wrongpassword",
         })
@@ -132,16 +150,30 @@ class TestLogin:
         })
         assert r.status_code == 401
 
-    def test_login_inactive_user(self, client, create_user):
+    def test_login_pending_user(self, client, db_session, create_user):
+        """Pending user (is_active=False, deactivated_at=None) gets pending message."""
         u = create_user(is_active=False)
+        db_session.commit()
         r = client.post("/api/auth/login", json={
             "username_or_email": u.email, "password": "password123",
         })
         assert r.status_code == 401
-        assert "inactivo" in r.json()["detail"].lower()
+        assert "pendiente" in r.json()["detail"].lower()
 
-    def test_login_sets_cookie(self, client):
-        register_user(client, email="logincookie@test.com")
+    def test_login_deactivated_user(self, client, db_session, create_user):
+        """Deactivated user (is_active=False, deactivated_at set) gets deactivated message."""
+        from datetime import datetime, timezone
+        u = create_user(is_active=False)
+        u.deactivated_at = datetime.now(timezone.utc)
+        db_session.commit()
+        r = client.post("/api/auth/login", json={
+            "username_or_email": u.email, "password": "password123",
+        })
+        assert r.status_code == 401
+        assert "desactivado" in r.json()["detail"].lower()
+
+    def test_login_sets_cookie(self, client, create_user):
+        create_user(email="logincookie@test.com")
         r = client.post("/api/auth/login", json={
             "username_or_email": "logincookie@test.com",
             "password": "password123",

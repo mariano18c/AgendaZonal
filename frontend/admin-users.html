@@ -61,6 +61,7 @@
           <select id="userFilter" onchange="loadUsers()" class="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500">
             <option value="active">Solo activos</option>
             <option value="all">Todos</option>
+            <option value="pending">Altas pendientes</option>
             <option value="inactive">Solo inactivos</option>
           </select>
         </label>
@@ -254,8 +255,9 @@
         const safePhone = escapeHtml(u.phone_area_code + '-' + u.phone_number);
         const roleDisplay = getRoleDisplay(u.role);
         const roleBadge = getRoleBadgeClass(u.role);
+        const status = u.status || (u.is_active ? 'active' : (u.deactivated_at ? 'deactivated' : 'pending'));
         return `
-          <tr class="hover:bg-gray-50 ${!u.is_active ? 'bg-gray-100' : ''}">
+          <tr class="hover:bg-gray-50 ${!u.is_active ? 'bg-gray-100' : ''} ${status === 'pending' ? 'bg-yellow-50' : ''}">
             <td class="px-4 py-3">
               <span class="font-medium text-gray-800">${safeUsername}</span>
               ${isCurrent ? '<span class="ml-2 text-xs text-blue-600">(vos)</span>' : ''}
@@ -267,24 +269,31 @@
               <span class="px-2 py-1 ${roleBadge} text-xs rounded">${roleDisplay}</span>
             </td>
             <td class="px-4 py-3">
-              ${u.is_active 
+              ${status === 'active'
                 ? '<span class="px-2 py-1 bg-green-100 text-green-700 text-sm rounded">Activo</span>'
-                : '<span class="px-2 py-1 bg-red-100 text-red-700 text-sm rounded">Inactivo</span>'}
+                : status === 'pending'
+                  ? '<span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-sm rounded">Pendiente</span>'
+                  : '<span class="px-2 py-1 bg-red-100 text-red-700 text-sm rounded">Inactivo</span>'}
             </td>
             <td class="px-4 py-3 text-gray-500 text-sm">${formatDate(u.deactivated_at)}</td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
-                <button onclick="openEditModal(${u.id}, '${safeUsername.replace(/'/g, "\\'")}', '${safeEmail.replace(/'/g, "\\'")}', '${escapeHtml(u.phone_area_code).replace(/'/g, "\\'")}', '${escapeHtml(u.phone_number).replace(/'/g, "\\'")}', '${u.role}', ${u.role === 'admin'})" 
-                  class="text-green-600 hover:underline text-sm">Editar</button>
-                <button onclick="openResetModal(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')" 
-                  class="text-blue-600 hover:underline text-sm">Reset</button>
-                ${u.is_active 
-                  ? (isCurrent 
-                    ? '<span class="text-gray-400 text-sm">-</span>'
-                    : `<button onclick="handleDeactivate(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')" 
-                        class="text-red-600 hover:underline text-sm">Desactivar</button>`)
-                  : `<button onclick="handleActivate(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')" 
-                      class="text-green-600 hover:underline text-sm">Activar</button>`}
+                ${status !== 'pending' ? `<button onclick="openEditModal(${u.id}, '${safeUsername.replace(/'/g, "\\'")}', '${safeEmail.replace(/'/g, "\\'")}', '${escapeHtml(u.phone_area_code).replace(/'/g, "\\'")}', '${escapeHtml(u.phone_number).replace(/'/g, "\\'")}', '${u.role}', ${u.role === 'admin'})" 
+                  class="text-green-600 hover:underline text-sm">Editar</button>` : ''}
+                ${status !== 'pending' ? `<button onclick="openResetModal(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')" 
+                  class="text-blue-600 hover:underline text-sm">Reset</button>` : ''}
+                ${status === 'pending'
+                  ? `<button onclick="handleApprove(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')"
+                      class="text-green-600 hover:underline text-sm">Aprobar</button>
+                     <button onclick="handleReject(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')"
+                      class="text-red-600 hover:underline text-sm">Rechazar</button>`
+                  : u.is_active
+                    ? (isCurrent
+                      ? '<span class="text-gray-400 text-sm">-</span>'
+                      : `<button onclick="handleDeactivate(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')"
+                          class="text-red-600 hover:underline text-sm">Desactivar</button>`)
+                    : `<button onclick="handleActivate(${u.id}, '${safeUsername.replace(/'/g, "\\'")}')"
+                        class="text-green-600 hover:underline text-sm">Activar</button>`}
               </div>
             </td>
           </tr>`;
@@ -437,6 +446,28 @@
       try {
         await activateUser(userId);
         showAlert('Usuario reactivado', 'success');
+        loadUsers();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function handleApprove(userId, username) {
+      if (!confirm(`¿Aprobar el alta de usuario ${username}?`)) return;
+      try {
+        await approveUser(userId);
+        showAlert('Usuario aprobado exitosamente', 'success');
+        loadUsers();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function handleReject(userId, username) {
+      if (!confirm(`¿Rechazar el alta de usuario ${username}? Esta acción no se puede deshacer.`)) return;
+      try {
+        await rejectUser(userId);
+        showAlert('Alta de usuario rechazada', 'success');
         loadUsers();
       } catch (err) {
         showAlert(err.message, 'error');
