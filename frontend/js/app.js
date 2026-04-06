@@ -37,12 +37,17 @@ async function updateNavbar() {
       adminLink = `<a href="/dashboard" class="text-gray-600 hover:text-gray-800">📊 Dashboard</a>`;
     }
     
+    const pushBtnHtml = ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied')
+      ? `<button id="pwaPushBtn" onclick="handleManualPushSubscription()" class="text-purple-600 hover:text-purple-800 transition text-sm font-medium" title="Activar notificaciones">🔔 Notificaciones</button>`
+      : '';
+
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
         <span class="text-gray-700">Hola, ${user.username}</span>
         ${pendingBadge}
         <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
+        ${pushBtnHtml}
         <button id="pwaInstallBtn" class="hidden text-green-600 hover:text-green-800" title="Instalar app">📲 Instalar</button>
         <button onclick="logout()" class="text-gray-600 hover:text-gray-800">Salir</button>
       </div>
@@ -112,23 +117,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- Push Notifications: auto-subscribe on login ---
-  console.log('Push: Checking subscription. PushManager:', 'PushManager' in window, 'SW:', 'serviceWorker' in navigator, 'LoggedIn:', isLoggedIn());
+  // --- Push Notifications: auto-subscribe if already granted ---
   if ('PushManager' in window && 'serviceWorker' in navigator && isLoggedIn()) {
-    console.log('Push: Will attempt subscription...');
-    // Wait for service worker to be ready before subscribing
-    navigator.serviceWorker.ready.then(reg => {
-      console.log('Push: Service worker ready, attempting subscribe...');
-      return subscribeToPush();
-    }).then(sub => {
-      console.log('Push: Subscription result:', sub ? 'SUCCESS' : 'FAILED');
-    }).catch(err => {
-      console.warn('Push: Subscription error:', err);
-    });
+    if ('Notification' in window && Notification.permission === 'granted') {
+      console.log('Push: Permission already granted, attempting silent subscribe...');
+      navigator.serviceWorker.ready.then(reg => {
+        return subscribeToPush();
+      }).catch(err => console.warn('Push: Auto-subscribe error:', err));
+    } else {
+      console.log('Push: Manual subscription required (permission not granted)');
+    }
   } else {
     console.log('Push: Skipped - not logged in or no push support');
   }
 });
+
+async function handleManualPushSubscription() {
+  const btn = document.getElementById('pwaPushBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏱️ Activando...';
+  }
+  
+  if ('Notification' in window) {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      try {
+        const sub = await subscribeToPush();
+        if (sub) {
+          showAlert('Notificaciones activadas exitosamente', 'success');
+          if (btn) btn.remove(); // Remove button once subscribed
+        } else {
+          showAlert('No se pudo completar la suscripción (Revisa claves VAPID).');
+          if (btn) { btn.disabled = false; btn.textContent = '🔔 Notificaciones'; }
+        }
+      } catch (err) {
+        showAlert('Error: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = '🔔 Notificaciones'; }
+      }
+    } else {
+      showAlert('Permiso de notificaciones denegado.');
+      if (btn) btn.remove();
+    }
+  }
+}
 
 /**
  * Subscribe to push notifications.
@@ -144,56 +176,57 @@ async function subscribeToPush() {
   const reg = await navigator.serviceWorker.ready;
   console.log('subscribeToPush: SW ready');
 
-  // Check existing subscription
+  // Force re-subscription to clear potentially expired endpoints (410 Gone)
   let subscription = await reg.pushManager.getSubscription();
-  console.log('subscribeToPush: Existing subscription:', subscription);
+  if (subscription) {
+      console.log('subscribeToPush: Unsubscribing existing to refresh...');
+      await subscription.unsubscribe();
+      // Also notify backend to remove old one if possible
+  }
 
-  if (!subscription) {
-    // Get VAPID public key from backend
-    let vapidPublicKey = window.__VAPID_PUBLIC_KEY__ || '';
-    if (!vapidPublicKey) {
-      console.log('subscribeToPush: Fetching VAPID key from backend...');
-      try {
-        const res = await apiRequest('/api/notifications/vapid-public-key');
-        vapidPublicKey = res.public_key;
-        window.__VAPID_PUBLIC_KEY__ = vapidPublicKey;
-        console.log('subscribeToPush: Got VAPID key:', vapidPublicKey.substring(0, 30) + '...');
-      } catch (e) {
-        console.error('subscribeToPush: Could not fetch VAPID public key:', e);
-        return null;
-      }
-    }
-    if (!vapidPublicKey) {
-      console.warn('Push: No VAPID public key configured');
-      return null;
-    }
-
+  // Get VAPID public key from backend
+  let vapidPublicKey = window.__VAPID_PUBLIC_KEY__ || '';
+  if (!vapidPublicKey) {
+    console.log('subscribeToPush: Fetching VAPID key from backend...');
     try {
-      console.log('subscribeToPush: Calling pushManager.subscribe...');
-      const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
-      console.log('subscribeToPush: convertedKey length:', convertedKey.length, '(should be 65 for P-256)');
-      
-      // Verificar los primeros bytes (debe empezar con 0x04 para P-256 uncompressed)
-      console.log('subscribeToPush: first byte:', convertedKey[0], '(should be 4 for uncompressed point)');
-      console.log('subscribeToPush: key bytes:', Array.from(convertedKey.slice(0, 8)));
-      
-      subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: convertedKey,
-      });
-      console.log('subscribeToPush: Browser subscription created:', subscription);
-
-      // Send subscription to backend
-      console.log('subscribeToPush: Sending to backend...');
-      await apiRequest('/api/notifications/subscribe', {
-        method: 'POST',
-        body: JSON.stringify(subscription),
-      });
-      console.log('Push: Subscribed successfully');
-    } catch (err) {
-      console.warn('Push: Subscription failed:', err.message);
+      const res = await apiRequest('/api/notifications/vapid-public-key');
+      vapidPublicKey = res.public_key;
+      window.__VAPID_PUBLIC_KEY__ = vapidPublicKey;
+      console.log('subscribeToPush: Got VAPID key:', vapidPublicKey.substring(0, 30) + '...');
+    } catch (e) {
+      console.error('subscribeToPush: Could not fetch VAPID public key:', e);
       return null;
     }
+  }
+  if (!vapidPublicKey) {
+    console.warn('Push: No VAPID public key configured');
+    return null;
+  }
+
+  try {
+    console.log('subscribeToPush: Calling pushManager.subscribe...');
+    const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
+    
+    subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: convertedKey,
+    });
+    console.log('subscribeToPush: Browser subscription created:', subscription);
+  } catch (err) {
+    console.warn('Push: Subscription failed:', err.message);
+    return null;
+  }
+
+  // Ensure current user is linked to the subscription in backend (always send)
+  try {
+    console.log('subscribeToPush: Sending subscription to backend for user linkage...');
+    await apiRequest('/api/notifications/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    });
+    console.log('Push: Subscribed/Linked successfully');
+  } catch (err) {
+    console.warn('Push: Failed to link subscription to backend:', err.message);
   }
 
   return subscription;

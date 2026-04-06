@@ -299,3 +299,15 @@ async function transferContactOwnership(contactId, newOwnerId) {
     body: JSON.stringify({ new_owner_id: newOwnerId }),
   });
 }
+
+async function requestContactDeletion(contactId) {
+  return apiRequest(`/api/contacts/${contactId}/request-deletion`, {
+    method: 'POST',
+  });
+}
+
+async function cancelContactDeletion(contactId) {
+  return apiRequest(`/api/contacts/${contactId}/cancel-deletion`, {
+    method: 'POST',
+  });
+}

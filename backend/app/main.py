@@ -55,7 +55,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "
             "style-src-elem 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "
             "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com https://*.openstreetmap.org; "
-            "connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.tile.openstreetmap.org https://*.openstreetmap.org; "
+            "connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.tile.openstreetmap.org https://*.openstreetmap.org https://unpkg.com; "
             "font-src 'self';"
         )
         

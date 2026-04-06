@@ -109,12 +109,24 @@ self.addEventListener('fetch', (event) => {
 // ---------------------------------------------------------------------------
 
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  console.log('[Service Worker] Push Event received:', event);
+  
+  let data;
+  try {
+    if (event.data) {
+      data = event.data.json();
+    } else {
+      data = { title: 'AgendaZonal', body: 'Nueva notificación' };
+    }
+  } catch (err) {
+    console.warn('[Service Worker] Push data is not JSON:', err);
+    data = { 
+      title: 'AgendaZonal', 
+      body: event.data ? event.data.text() : 'Nueva notificación' 
+    };
+  }
 
-  const data = event.data.json().catch(() => ({
-    title: 'Agenda de la zona',
-    body: event.data.text() || 'Nueva notificación',
-  }));
+  console.log('[Service Worker] Push Data:', data);
 
   const options = {
     body: data.body || data.message || 'Nueva notificación',
@@ -127,7 +139,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Agenda de la zona', options)
+    self.registration.showNotification(data.title || 'AgendaZonal', options)
   );
 });
 

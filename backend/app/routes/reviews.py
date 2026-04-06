@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.review import ReviewCreate, ReviewReplyCreate, ReviewResponse, ReviewListResponse, VerifyLevelRequest
 from app.auth import get_current_user
 from app.routes.contacts import get_current_user_optional
+from app.routes.notifications import send_push_to_user
 
 router = APIRouter(tags=["reviews"])
 
@@ -160,6 +161,16 @@ def create_review(
     db.commit()
     db.refresh(review)
 
+    # Notify contact owner about new review
+    if contact.user_id:
+        send_push_to_user(
+            db=db,
+            user_id=contact.user_id,
+            title=f"⭐ ¡Nueva reseña!",
+            body=f"Has recibido una reseña de {data.rating} estrellas.",
+            url=f"/profile?id={contact.id}#reviews"
+        )
+
     return ReviewResponse(
         id=review.id,
         contact_id=review.contact_id,
@@ -248,6 +259,9 @@ def reply_to_review(
         raise HTTPException(status_code=404, detail="Reseña no encontrada")
 
     # Only contact owner can reply
+    if not review.is_approved:
+        raise HTTPException(status_code=400, detail="No se puede responder a una reseña que no ha sido aprobada")
+
     contact = db.query(Contact).filter(Contact.id == review.contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")

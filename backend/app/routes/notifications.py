@@ -235,6 +235,80 @@ def send_push_to_all(db: Session, title: str, body: str, url: str = "/"):
     return success_count
 
 
+def send_push_to_roles(db: Session, roles: list[str], title: str, body: str, url: str = "/"):
+    """Send a push notification to users with specific roles.
+
+    Args:
+        db: Database session
+        roles: List of roles to send to (e.g. ['admin', 'moderator'])
+        title: Notification title
+        body: Notification body text
+        url: URL to open on click
+
+    Returns:
+        Number of successful sends
+    """
+    if not VAPID_PRIVATE_KEY:
+        return 0
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return 0
+
+    # Get users with the specified roles
+    users = db.query(User.id).filter(User.role.in_(roles)).all()
+    user_ids = [u.id for u in users]
+
+    if not user_ids:
+        return 0
+
+    subscriptions = db.query(PushSubscription).filter(
+        PushSubscription.user_id.in_(user_ids)
+    ).all()
+
+    if not subscriptions:
+        return 0
+
+    payload = json.dumps({
+        "title": title,
+        "body": body,
+        "url": url,
+    })
+
+    success_count = 0
+    expired = []
+
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {
+                        "p256dh": sub.p256dh,
+                        "auth": sub.auth,
+                    },
+                },
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={
+                    "sub": VAPID_CLAIM_EMAIL,
+                },
+            )
+            success_count += 1
+        except WebPushException as e:
+            if e.response and e.response.status_code in (404, 410):
+                expired.append(sub.id)
+            else:
+                logger.warning(f"Push send failed: {e}")
+
+    if expired:
+        db.query(PushSubscription).filter(PushSubscription.id.in_(expired)).delete()
+        db.commit()
+
+    return success_count
+
+
 # ---------------------------------------------------------------------------
 # Existing notification endpoints
 # ---------------------------------------------------------------------------

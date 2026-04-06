@@ -17,6 +17,7 @@ from app.models.utility_item import UtilityItem
 from app.schemas.report import ReportCreate, ReportResponse
 from app.schemas.utility import UtilityItemCreate, UtilityItemResponse
 from app.auth import get_current_user
+from app.routes.notifications import send_push_to_roles
 
 router = APIRouter(tags=["admin"])
 
@@ -73,6 +74,16 @@ def report_contact(
         contact.status = "flagged"
 
     db.commit()
+
+    # Notify admins and moderators
+    send_push_to_roles(
+        db=db,
+        roles=["admin", "moderator"],
+        title="⚠️ Contacto Reportado",
+        body=f"El contacto '{contact.name}' ha recibido un reporte. Total: {unresolved_count}.",
+        url="/admin/reports"
+    )
+
     return {"message": "Reporte registrado", "reports_count": unresolved_count}
 
 

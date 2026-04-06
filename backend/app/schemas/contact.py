@@ -69,7 +69,7 @@ class ContactCreate(BaseModel):
     def validate_maps_url_field(cls, v):
         return validate_url(v, 'maps_url')
 
-    @field_validator('name', 'address', 'city', 'neighborhood', 'description', 'schedule')
+    @field_validator('name', 'address', 'city', 'neighborhood', 'description', 'schedule', 'about', 'instagram', 'facebook')
     @classmethod
     def sanitize_text_fields(cls, v):
         return sanitize_text(v)
@@ -90,6 +90,9 @@ class ContactUpdate(BaseModel):
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)
     maps_url: str | None = Field(None, max_length=500)
+    instagram: str | None = Field(None, max_length=100)
+    facebook: str | None = Field(None, max_length=255)
+    about: str | None = Field(None, max_length=2000)
 
     @field_validator('phone')
     @classmethod
@@ -108,7 +111,7 @@ class ContactUpdate(BaseModel):
     def validate_maps_url_field(cls, v):
         return validate_url(v, 'maps_url')
 
-    @field_validator('name', 'address', 'city', 'neighborhood', 'description', 'schedule')
+    @field_validator('name', 'address', 'city', 'neighborhood', 'description', 'schedule', 'about', 'instagram', 'facebook')
     @classmethod
     def sanitize_text_fields(cls, v):
         return sanitize_text(v)

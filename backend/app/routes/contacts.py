@@ -26,6 +26,7 @@ from app.config import JWT_SECRET, JWT_ALGORITHM
 from app.auth import get_current_user
 from app.geo import bounding_box, haversine_km, validate_coordinates
 from app.rate_limit import limiter
+from app.routes.notifications import send_push_to_user
 
 router = APIRouter(prefix="/api/contacts", tags=["contacts"])
 
@@ -270,6 +271,9 @@ def export_contacts(
     user: User = Depends(get_current_user),
 ):
     """Export contacts as CSV or JSON."""
+    if user.role not in ['admin', 'moderator']:
+        raise HTTPException(status_code=403, detail="No tiene permisos para exportar datos")
+        
     query = db.query(Contact)
     if category_id is not None:
         query = query.filter(Contact.category_id == category_id)
@@ -577,6 +581,17 @@ def verify_change(
     
     db.commit()
     db.refresh(change)
+
+    # Notify the user who suggested the change
+    if change.user_id:
+        send_push_to_user(
+            db=db,
+            user_id=change.user_id,
+            title="✅ Cambio Aprobado",
+            body=f"Tu sugerencia para '{contact.name}' fue verificada.",
+            url=f"/profile?id={contact.id}"
+        )
+
     return change
 
 
@@ -614,6 +629,17 @@ def reject_change(
     
     db.commit()
     db.refresh(change)
+
+    # Notify the user who suggested the change
+    if change.user_id:
+        send_push_to_user(
+            db=db,
+            user_id=change.user_id,
+            title="❌ Cambio Rechazado",
+            body=f"Tu sugerencia para '{contact.name}' no fue aprobada.",
+            url=f"/profile?id={contact.id}"
+        )
+
     return change
 
 

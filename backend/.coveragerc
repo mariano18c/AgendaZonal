@@ -8,15 +8,13 @@ omit =
     init_db.py
     run.py
     run_debug.py
-    app/repositories/*
-    app/services/*
     app/settings.py
 
 [report]
 precision = 2
 show_missing = True
 skip_empty = True
-fail_under = 90
+fail_under = 95
 
 exclude_lines =
     pragma: no cover

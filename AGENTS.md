@@ -1,4 +1,10 @@
-# Agent Configuration - Agenda Comunitaria
+# Agent Configuration - Agenda Comunitaria (Gentle AI)
+
+## Gentle AI Stack
+- **Agent ID**: `antigravity`
+- **Workflow**: Spec-Driven Development (SDD)
+- **Status**: ✅ **GENTLE-READY** (CLI v1.18.2 Installed)
+- **Config**: `.gga` (Guardian Angel) -> Migrated to `gentle-ai` binary ecosystem
 
 ## Proyecto
 - **Nombre**: Agenda Comunitaria

@@ -1,86 +1,89 @@
-"""Unit tests for CAPTCHA module."""
-import pytest
+"""Unit tests — CAPTCHA system."""
 import time
+import pytest
 from app.captcha import CaptchaManager, CaptchaChallenge
 
 
-class TestCaptchaChallenge:
-    """Test CaptchaChallenge dataclass."""
+class TestCaptchaGenerate:
+    def test_returns_challenge(self):
+        c = CaptchaManager.generate()
+        assert c.id
+        assert c.question
+        assert "?" in c.question
 
-    def test_verify_expired_challenge(self):
-        challenge = CaptchaChallenge(
-            id="test_expired",
-            question="5 + 3 = ?",
-            answer_hash="fake",
-            expires_at=time.time() - 100,
-        )
-        assert challenge.verify("8") is False
+    def test_unique_ids(self):
+        ids = {CaptchaManager.generate().id for _ in range(10)}
+        assert len(ids) == 10
 
-    def test_verify_correct_hash(self):
-        """Generate a challenge and verify with the correct answer."""
-        challenge = CaptchaManager.generate()
-        # The challenge was just created, so it should be in the store
-        assert challenge.id in CaptchaManager.CHALLENGES
+    def test_stored_in_challenges(self):
+        c = CaptchaManager.generate()
+        assert c.id in CaptchaManager.CHALLENGES
 
 
-class TestCaptchaManager:
-    """Test CaptchaManager singleton behavior."""
+class TestCaptchaVerify:
+    def test_correct_answer(self):
+        c = CaptchaManager.generate()
+        # Parse answer from question
+        q = c.question
+        if " + " in q:
+            a, b = q.replace(" = ?", "").split(" + ")
+            answer = int(a) + int(b)
+        elif " - " in q:
+            a, b = q.replace(" = ?", "").split(" - ")
+            answer = int(a) - int(b)
+        else:
+            a, b = q.replace(" = ?", "").split(" × ")
+            answer = int(a) * int(b)
+        assert CaptchaManager.verify(c.id, str(answer)) is True
 
-    def test_all_operations_generated(self):
-        """Test that all three operations (+, -, x) are generated over time."""
-        seen_operations = set()
-        for _ in range(200):
-            challenge = CaptchaManager.generate()
-            if '+' in challenge.question:
-                seen_operations.add('+')
-            elif '-' in challenge.question:
-                seen_operations.add('-')
-            elif '×' in challenge.question:
-                seen_operations.add('×')
-            # Clean up to avoid memory leak
-            if challenge.id in CaptchaManager.CHALLENGES:
-                del CaptchaManager.CHALLENGES[challenge.id]
+    def test_wrong_answer(self):
+        c = CaptchaManager.generate()
+        assert CaptchaManager.verify(c.id, "999999") is False
 
-        assert len(seen_operations) == 3, f"Expected all 3 operations, got: {seen_operations}"
+    def test_nonexistent_id(self):
+        assert CaptchaManager.verify("nonexistent", "42") is False
 
-    def test_challenge_is_stored(self):
-        challenge = CaptchaManager.generate()
-        assert challenge.id in CaptchaManager.CHALLENGES
-        # Cleanup
-        del CaptchaManager.CHALLENGES[challenge.id]
+    def test_one_time_use(self):
+        c = CaptchaManager.generate()
+        # First verify (wrong answer) still consumes the challenge
+        CaptchaManager.verify(c.id, "0")
+        assert CaptchaManager.verify(c.id, "0") is False
 
-    def test_verify_nonexistent_challenge_returns_false(self):
-        assert CaptchaManager.verify("nonexistent_id", "42") is False
+    def test_expired_challenge(self):
+        c = CaptchaManager.generate()
+        # Manually expire it
+        CaptchaManager.CHALLENGES[c.id].expires_at = time.time() - 1
+        assert CaptchaManager.verify(c.id, "0") is False
 
-    def test_verify_consumes_challenge(self):
-        """After verification (success or fail), the challenge should be consumed."""
-        challenge = CaptchaManager.generate()
-        challenge_id = challenge.id
 
-        # Try wrong answer — should still consume
-        CaptchaManager.verify(challenge_id, "wrong")
-
-        # Second attempt should fail (consumed)
-        assert CaptchaManager.verify(challenge_id, "any") is False
-
+class TestCaptchaCleanup:
     def test_cleanup_removes_expired(self):
-        # Create an expired challenge
-        old_challenge = CaptchaChallenge(
-            id="will_cleanup",
-            question="1 + 1 = ?",
-            answer_hash="fake",
-            expires_at=time.time() - 1000,
-        )
-        CaptchaManager.CHALLENGES["will_cleanup"] = old_challenge
+        c = CaptchaManager.generate()
+        CaptchaManager.CHALLENGES[c.id].expires_at = time.time() - 1
         CaptchaManager.LAST_CLEANUP = 0  # Force cleanup
+        CaptchaManager._cleanup()
+        assert c.id not in CaptchaManager.CHALLENGES
 
-        CaptchaManager.generate()  # Triggers _cleanup
+    def test_cleanup_skips_if_recent(self):
+        c = CaptchaManager.generate()
+        CaptchaManager.CHALLENGES[c.id].expires_at = time.time() - 1
+        CaptchaManager.LAST_CLEANUP = time.time()  # Recent
+        CaptchaManager._cleanup()
+        assert c.id in CaptchaManager.CHALLENGES
 
-        assert "will_cleanup" not in CaptchaManager.CHALLENGES
 
-    def test_challenge_question_format(self):
-        """Verify challenge question format is valid."""
-        challenge = CaptchaManager.generate()
-        assert "= ?" in challenge.question
-        parts = challenge.question.replace(" = ?", "").split(" ")
-        assert len(parts) == 3  # num operator num
+class TestCaptchaChallengeVerify:
+    def test_verify_method_on_instance(self):
+        ch = CaptchaChallenge(
+            id="test", question="1 + 1 = ?",
+            answer_hash="", expires_at=time.time() + 300,
+        )
+        # Hash won't match but we test the method runs
+        assert ch.verify("wrong") is False
+
+    def test_expired_instance(self):
+        ch = CaptchaChallenge(
+            id="test", question="1 + 1 = ?",
+            answer_hash="something", expires_at=time.time() - 1,
+        )
+        assert ch.verify("anything") is False

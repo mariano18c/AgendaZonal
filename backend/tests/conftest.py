@@ -1,36 +1,40 @@
-"""Global test fixtures for AgendaZonal — Professional QA Suite 2026.
+"""Global test fixtures for AgendaZonal — Professional QA Suite v2.
 
-Database strategy:
-- SQLite :memory: with StaticPool for session-level isolation
-- PRAGMA foreign_keys=ON, WAL mode, busy_timeout=5000
+Database strategy
+-----------------
+- SQLite :memory: with StaticPool (shared across one session)
+- PRAGMA foreign_keys=ON for referential integrity
 - Per-function SAVEPOINT rollback for true transactional isolation
 - Categories pre-seeded at session level
 
-Async support:
-- pytest-asyncio in auto mode
-- httpx.AsyncClient with ASGITransport for real async lifecycle
+HTTP clients
+------------
+- Sync ``TestClient`` for most tests (faster)
+- Async ``httpx.AsyncClient`` available when needed
 
-Security:
-- Rate limiting disabled via TESTING=1
-- CAPTCHA challenges auto-managed
+Helpers
+-------
+- ``create_user`` / ``create_contact`` / etc. — direct-DB factories
+- ``auth_headers`` — register-via-API and return Bearer dict
+- ``jwt_helpers`` — craft malicious tokens for security tests
 """
 import os
+
 os.environ["TESTING"] = "1"
 
 import re
 import uuid
 import bcrypt
-import jwt
+import jwt as pyjwt
 import pytest
 from datetime import datetime, timedelta, timezone
-from typing import Generator, AsyncGenerator, Callable
-from contextlib import contextmanager
+from typing import Generator, AsyncGenerator
 
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool, NullPool
+from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.database import Base, get_db
@@ -50,17 +54,41 @@ from app.models.contact_photo import ContactPhoto
 from app.auth import create_token
 
 
-# ---------------------------------------------------------------------------
-# Database engine (session-scoped)
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# Database engine (session-scoped, created ONCE for the whole run)
+# ──────────────────────────────────────────────────────────────────────
+
+SEED_CATEGORIES = [
+    (100, "Plomero/a", "wrench", "Plomería"),
+    (101, "Gasista", "fire", "Gas"),
+    (102, "Electricista", "zap", "Electricidad"),
+    (103, "Peluquería/Barbería", "scissors", "Peluquería"),
+    (104, "Albañil", "hammer", "Construcción"),
+    (105, "Pintor", "paint", "Pintura"),
+    (106, "Carpintero/a", "wood", "Carpintería"),
+    (107, "Supermercado", "cart", "Alimentos"),
+    (108, "Carnicería", "meat", "Carnes"),
+    (109, "Verdulería", "leaf", "Verduras"),
+    (110, "Panadería", "bread", "Pan"),
+    (111, "Tienda de ropa", "shirt", "Ropa"),
+    (112, "Farmacia", "pill", "Salud"),
+    (113, "Librería", "book", "Libros"),
+    (114, "Bar", "beer", "Bebidas"),
+    (115, "Restaurant", "utensils", "Comida"),
+    (116, "Club", "trophy", "Deportes"),
+    (117, "Bazar", "store", "Varios"),
+    (118, "Veterinaria", "paw", "Mascotas"),
+    (119, "Ferretería", "tools", "Herramientas"),
+    (120, "Kiosco", "candy", "Snacks"),
+    (121, "Juguetería", "game", "Juguetes"),
+    (122, "Polirrubro", "shop", "Varios"),
+    (999, "Otro", "more", "Otros"),
+]
+
 
 @pytest.fixture(scope="session")
 def test_engine():
-    """Create a shared in-memory SQLite engine with production-equivalent PRAGMAs.
-
-    Uses StaticPool so all connections share the same :memory: database.
-    Categories are seeded once at session level for performance.
-    """
+    """Shared in-memory SQLite engine with production-equivalent PRAGMAs."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -68,46 +96,20 @@ def test_engine():
     )
 
     @event.listens_for(engine, "connect")
-    def set_test_pragma(dbapi_connection, _connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.execute("PRAGMA cache_size=-20000")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.close()
+    def _set_pragma(dbapi_conn, _rec):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=5000")
+        cur.execute("PRAGMA cache_size=-20000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
 
     Base.metadata.create_all(bind=engine)
 
-    # Seed categories once at session level
+    # Seed categories once
     with engine.begin() as conn:
-        categories = [
-            (100, "Plomero/a", "wrench", "Plomería"),
-            (101, "Gasista", "fire", "Gas"),
-            (102, "Electricista", "zap", "Electricidad"),
-            (103, "Peluquería/Barbería", "scissors", "Peluquería"),
-            (104, "Albañil", "hammer", "Construcción"),
-            (105, "Pintor", "paint", "Pintura"),
-            (106, "Carpintero/a", "wood", "Carpintería"),
-            (107, "Supermercado", "cart", "Alimentos"),
-            (108, "Carnicería", "meat", "Carnes"),
-            (109, "Verdulería", "leaf", "Verduras"),
-            (110, "Panadería", "bread", "Pan"),
-            (111, "Tienda de ropa", "shirt", "Ropa"),
-            (112, "Farmacia", "pill", "Salud"),
-            (113, "Librería", "book", "Libros"),
-            (114, "Bar", "beer", "Bebidas"),
-            (115, "Restaurant", "utensils", "Comida"),
-            (116, "Club", "trophy", "Deportes"),
-            (117, "Bazar", "store", "Varios"),
-            (118, "Veterinaria", "paw", "Mascotas"),
-            (119, "Ferretería", "tools", "Herramientas"),
-            (120, "Kiosco", "candy", "Snacks"),
-            (121, "Juguetería", "game", "Juguetes"),
-            (122, "Polirrubro", "shop", "Varios"),
-            (999, "Otro", "more", "Otros"),
-        ]
-        for code, name, icon, desc in categories:
+        for code, name, icon, desc in SEED_CATEGORIES:
             conn.execute(
                 text(
                     "INSERT OR IGNORE INTO categories (code, name, icon, description) "
@@ -120,36 +122,34 @@ def test_engine():
     Base.metadata.drop_all(bind=engine)
 
 
-# ---------------------------------------------------------------------------
-# Transactional session with SAVEPOINT rollback (per-function isolation)
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# Per-function transactional session (SAVEPOINT rollback)
+# ──────────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="function")
+@pytest.fixture()
 def db_session(test_engine) -> Generator[Session, None, None]:
-    """Per-test database session with outer-transaction rollback.
+    """Per-test DB session with automatic rollback via outer transaction.
 
-    Creates a NEW connection from the shared engine for each test.
-    The outer transaction is rolled back on teardown, undoing ALL changes.
-    Nested savepoints allow route-level commits without breaking isolation.
+    Each test runs inside a savepoint.  Route-level ``db.commit()`` calls
+    release the savepoint, which is immediately restarted so subsequent
+    operations still live inside the outer transaction.  At teardown the
+    outer transaction is rolled back, undoing ALL changes.
     """
-    # Create a NEW connection from the shared engine (StaticPool allows this)
     connection = test_engine.connect()
     outer_txn = connection.begin()
 
-    session_factory = sessionmaker(
+    factory = sessionmaker(
         bind=connection,
         autocommit=False,
         autoflush=False,
         expire_on_commit=False,
     )
-    session = session_factory()
-
-    # Begin nested savepoint so route-level commits work
+    session = factory()
     session.begin_nested()
 
     @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(sess, trans):
-        if trans.nested and not trans._parent.nested:
+    def _restart_savepoint(sess, txn):
+        if txn.nested and not txn._parent.nested:
             sess.begin_nested()
 
     yield session
@@ -159,178 +159,128 @@ def db_session(test_engine) -> Generator[Session, None, None]:
     connection.close()
 
 
-# Backward compatibility alias — existing tests use 'database_session'
-database_session = db_session
+# ──────────────────────────────────────────────────────────────────────
+# Dependency override
+# ──────────────────────────────────────────────────────────────────────
 
-
-# ---------------------------------------------------------------------------
-# Dependency override helper
-# ---------------------------------------------------------------------------
-
-def _override_db(session: Session):
-    """Override get_db dependency to use the test session."""
-    def _override():
+def _override_get_db(session: Session):
+    """Return a FastAPI dependency override that yields *session*."""
+    def _inner():
         try:
             yield session
         finally:
             pass
-    return _override
+    return _inner
 
 
-# ---------------------------------------------------------------------------
-# HTTP Clients
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# HTTP clients
+# ──────────────────────────────────────────────────────────────────────
 
-@pytest.fixture
+@pytest.fixture()
 def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """Sync TestClient with transactional DB session override."""
-    app.dependency_overrides[get_db] = _override_db(db_session)
-    with TestClient(app) as c:
+    """Sync ``TestClient`` bound to the transactional DB session."""
+    app.dependency_overrides[get_db] = _override_get_db(db_session)
+    with TestClient(app, raise_server_exceptions=False) as c:
         c.cookies.clear()
         yield c
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
+@pytest.fixture()
 async def async_client(db_session: Session) -> AsyncGenerator[AsyncClient, None]:
-    """Async httpx client with ASGITransport for real async lifecycle.
-
-    Supports FastAPI lifespan events and real async HTTP requests.
-    Shares the same DB session override as the sync client.
-    """
-    app.dependency_overrides[get_db] = _override_db(db_session)
+    """Async ``httpx.AsyncClient`` with ASGITransport."""
+    app.dependency_overrides[get_db] = _override_get_db(db_session)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
 
 
-# ---------------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------------
-
-def _hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def _parse_captcha_answer(question: str) -> int:
-    """Parse CAPTCHA math question and return the numeric answer."""
-    if ' + ' in question:
-        match = re.match(r'(\d+) \+ (\d+)', question)
-        return int(match.group(1)) + int(match.group(2))
-    elif ' - ' in question:
-        match = re.match(r'(\d+) - (\d+)', question)
-        return int(match.group(1)) - int(match.group(2))
-    elif ' × ' in question:
-        match = re.match(r'(\d+) × (\d+)', question)
-        return int(match.group(1)) * int(match.group(2))
-    else:
-        raise ValueError(f"Unknown CAPTCHA format: {question}")
-
-
-def _get_captcha_and_answer(client: TestClient) -> dict[str, str]:
-    """Get a fresh CAPTCHA challenge and compute its answer."""
-    resp = client.get("/api/auth/captcha")
-    assert resp.status_code == 200, f"CAPTCHA endpoint failed: {resp.text}"
-    data = resp.json()
-    answer = _parse_captcha_answer(data["question"])
-    return {
-        "challenge_id": data["challenge_id"],
-        "answer": str(answer),
-    }
-
-
-def _register_and_login(
-    client: TestClient,
-    username: str,
-    email: str,
-    password: str = "password123",
-    role: str = "user",
-) -> dict[str, str]:
-    """Register a user via API and return Bearer auth headers."""
-    captcha = _get_captcha_and_answer(client)
-    resp = client.post("/api/auth/register", json={
-        "username": username,
-        "email": email,
-        "phone_area_code": "0341",
-        "phone_number": "1234567",
-        "password": password,
-        "captcha_challenge_id": captcha["challenge_id"],
-        "captcha_answer": captcha["answer"],
-    })
-    if resp.status_code == 201:
-        token = resp.json()["token"]
-        return {"Authorization": f"Bearer {token}"}
-
-    # Fallback: try login (user may already exist)
-    resp = client.post("/api/auth/login", json={
-        "username_or_email": username,
-        "password": password,
-    })
-    assert resp.status_code == 200, f"Login failed: {resp.text}"
-    token = resp.json()["token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-# ---------------------------------------------------------------------------
-# CAPTCHA management
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# CAPTCHA helpers
+# ──────────────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
-def captcha_cleanup():
-    """Clear CaptchaManager challenges before and after each test.
-
-    Prevents cross-test contamination from accumulated/expired challenges.
-    """
+def _captcha_cleanup():
+    """Clear CAPTCHA challenges before AND after each test."""
     from app.captcha import CaptchaManager
     CaptchaManager.CHALLENGES.clear()
     yield
     CaptchaManager.CHALLENGES.clear()
 
 
-# ---------------------------------------------------------------------------
-# CAPTCHA fixture
-# ---------------------------------------------------------------------------
+def _parse_captcha_answer(question: str) -> int:
+    """Solve a math CAPTCHA question."""
+    if " + " in question:
+        m = re.match(r"(\d+) \+ (\d+)", question)
+        return int(m.group(1)) + int(m.group(2))
+    if " - " in question:
+        m = re.match(r"(\d+) - (\d+)", question)
+        return int(m.group(1)) - int(m.group(2))
+    if " × " in question:
+        m = re.match(r"(\d+) × (\d+)", question)
+        return int(m.group(1)) * int(m.group(2))
+    raise ValueError(f"Unknown CAPTCHA: {question}")
 
-@pytest.fixture
+
+def solve_captcha(client: TestClient) -> dict[str, str]:
+    """Get + solve a fresh CAPTCHA.  Returns ``{challenge_id, answer}``."""
+    resp = client.get("/api/auth/captcha")
+    assert resp.status_code == 200
+    data = resp.json()
+    answer = _parse_captcha_answer(data["question"])
+    return {"challenge_id": data["challenge_id"], "answer": str(answer)}
+
+
+@pytest.fixture()
 def captcha(client: TestClient) -> dict[str, str]:
-    """Get a valid CAPTCHA challenge with pre-computed answer."""
-    return _get_captcha_and_answer(client)
+    """Ready-to-use CAPTCHA dict for registration payloads."""
+    return solve_captcha(client)
 
 
-# ---------------------------------------------------------------------------
-# User / Auth fixtures
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# Password helper
+# ──────────────────────────────────────────────────────────────────────
 
-@pytest.fixture
+def _hash(password: str = "password123") -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# User factory (direct DB)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
 def create_user(db_session: Session):
-    """Factory to create users directly in the database.
+    """Factory: create a ``User`` directly in the DB.
 
-    Usage:
-        user = create_user(username="alice", role="admin")
+    Every call generates a UUID-based unique username/email so there are
+    never UNIQUE-constraint collisions, even with StaticPool.
+
+    Usage::
+
+        user = create_user()                        # defaults
+        admin = create_user(role="admin")
+        mod = create_user(role="moderator", username="mod1")
     """
-    def _create(
-        username: str = "testuser",
-        email: str = "test@test.com",
+    def _make(
+        *,
+        username: str | None = None,
+        email: str | None = None,
         password: str = "password123",
         role: str = "user",
         is_active: bool = True,
         phone_area_code: str = "0341",
         phone_number: str = "1234567",
     ) -> User:
-        # Clean up any existing user with same email/username first
-        db_session.query(User).filter(
-            (User.email == email) | (User.username == username)
-        ).delete()
-        db_session.commit()
-        
+        uid = uuid.uuid4().hex[:8]
         user = User(
-            username=username,
-            email=email,
+            username=username or f"u_{uid}",
+            email=email or f"u_{uid}@test.com",
             phone_area_code=phone_area_code,
             phone_number=phone_number,
-            password_hash=_hash_password(password),
+            password_hash=_hash(password),
             role=role,
             is_active=is_active,
         )
@@ -338,543 +288,278 @@ def create_user(db_session: Session):
         db_session.commit()
         db_session.refresh(user)
         return user
-    return _create
+    return _make
 
 
-@pytest.fixture
-def auth_headers(client: TestClient):
-    """Factory to register a user and return Bearer auth headers.
+# ──────────────────────────────────────────────────────────────────────
+# Auth-header helpers
+# ──────────────────────────────────────────────────────────────────────
 
-    Usage:
-        headers = auth_headers(username="alice", email="alice@test.com")
+def _bearer(user: User) -> dict[str, str]:
+    """Build ``{"Authorization": "Bearer <token>"}`` for a User row."""
+    return {"Authorization": f"Bearer {create_token(user.id)}"}
+
+
+@pytest.fixture()
+def user_headers(create_user) -> dict[str, str]:
+    """Headers for a fresh regular user."""
+    return _bearer(create_user())
+
+
+@pytest.fixture()
+def admin_user(create_user) -> User:
+    """An admin ``User`` object."""
+    return create_user(role="admin")
+
+
+@pytest.fixture()
+def admin_headers(admin_user) -> dict[str, str]:
+    """Admin Bearer headers."""
+    return _bearer(admin_user)
+
+
+@pytest.fixture()
+def mod_user(create_user) -> User:
+    """A moderator ``User`` object."""
+    return create_user(role="moderator")
+
+
+@pytest.fixture()
+def mod_headers(mod_user) -> dict[str, str]:
+    """Moderator Bearer headers."""
+    return _bearer(mod_user)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Contact factory (direct DB)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def create_contact(db_session: Session, create_user):
+    """Factory: create a ``Contact`` directly in the DB.
+
+    If ``user_id`` is omitted a new owner user is auto-created.
+
+    Usage::
+
+        c = create_contact(name="Ferretería Juan")
+        c = create_contact(user_id=admin.id, category_id=100)
     """
-    def _auth(
-        username: str = "authuser",
-        email: str = "auth@test.com",
-        password: str = "password123",
-    ) -> dict[str, str]:
-        return _register_and_login(client, username, email, password)
-    return _auth
-
-
-@pytest.fixture
-def auth_token(client: TestClient):
-    """Factory to register a user and return just the JWT token string.
-
-    Usage:
-        token = auth_token(username="alice", email="alice@test.com")
-    """
-    def _token(
-        username: str = "authuser",
-        email: str = "auth@test.com",
-        password: str = "password123",
-    ) -> str:
-        headers = _register_and_login(client, username, email, password)
-        return headers["Authorization"].split(" ", 1)[1]
-    return _token
-
-
-@pytest.fixture
-def admin_headers(db_session: Session, client: TestClient) -> dict[str, str]:
-    """Return admin auth headers. Creates admin in DB if needed.
-
-    Creates the admin user directly in the DB to avoid rate limiting
-    on the bootstrap-admin endpoint.
-
-    Idempotent: cleans up any existing user with same email/username first
-    to avoid UNIQUE constraint conflicts with StaticPool SQLite when tests
-    run sequentially and other fixtures create users via API endpoints
-    (which commit outside the savepoint mechanism).
-    """
-    import bcrypt
-    from app.models.user import User
-
-    admin_email = "admin@test.com"
-    admin_username = "adminuser"
-
-    # Clean up any existing user with same email/username to ensure idempotency
-    db_session.query(User).filter(
-        (User.email == admin_email) | (User.username == admin_username)
-    ).delete()
-    db_session.commit()
-
-    # Create admin directly in DB
-    password_hash = bcrypt.hashpw(
-        "adminpass123".encode("utf-8"),
-        bcrypt.gensalt(),
-    ).decode("utf-8")
-    admin = User(
-        username=admin_username,
-        email=admin_email,
-        phone_area_code="0341",
-        phone_number="1111111",
-        password_hash=password_hash,
-        role="admin",
-    )
-    db_session.add(admin)
-    db_session.commit()
-    db_session.refresh(admin)
-
-    token = create_token(admin.id)
-    return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture
-def moderator_user(client: TestClient, create_user, db_session):
-    """Create a user with moderator role. Returns (user_obj, headers).
-    
-    Uses unique email to avoid UNIQUE constraint conflicts with StaticPool.
-    """
-    import uuid
-    unique_id = uuid.uuid4().hex[:8]
-    
-    # Clean any existing moderator from previous tests
-    from app.models.user import User
-    db_session.query(User).filter(User.email.like("mod_%@test.com")).delete()
-    db_session.commit()
-    
-    user = create_user(
-        username=f"mod_{unique_id}",
-        email=f"mod_{unique_id}@test.com",
-        password="password123",
-        role="moderator",
-    )
-    resp = client.post("/api/auth/login", json={
-        "username_or_email": user.username,
-        "password": "password123",
-    })
-    assert resp.status_code == 200
-    headers = {"Authorization": f"Bearer {resp.json()['token']}"}
-    return user, headers
-
-
-# ---------------------------------------------------------------------------
-# Data factory fixtures (direct DB creation — corrected)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def create_contact(db_session: Session):
-    """Factory to create contacts directly in the database.
-
-    Creates a Contact with valid defaults, linked to a user.
-    If user_id is not provided, creates a new user automatically.
-
-    Usage:
-        contact = create_contact(name="Mi Negocio", category_id=1)
-    """
-    def _create(
+    def _make(
+        *,
         name: str = "Test Contact",
         phone: str = "1234567",
         user_id: int | None = None,
         category_id: int | None = None,
         email: str = "",
         address: str = "",
-        city: str = "",
-        neighborhood: str = "",
-        description: str = "",
+        city: str = "Rosario",
+        neighborhood: str = "Centro",
+        description: str = "Test desc",
         latitude: float | None = None,
         longitude: float | None = None,
         status: str = "active",
         verification_level: int = 0,
+        slug: str | None = None,
     ) -> Contact:
         if user_id is None:
-            unique_id = uuid.uuid4().hex[:8]
-            user = User(
-                username=f"contact_owner_{unique_id}",
-                email=f"contact_{unique_id}@test.com",
-                phone_area_code="0341",
-                phone_number="9999999",
-                password_hash=_hash_password("password123"),
-                role="user",
-            )
-            db_session.add(user)
-            db_session.commit()
-            db_session.refresh(user)
-            user_id = user.id
-
+            user_id = create_user().id
         if category_id is None:
             cat = db_session.query(Category).first()
-            if cat:
-                category_id = cat.id
+            category_id = cat.id if cat else None
 
         contact = Contact(
-            name=name,
-            phone=phone,
-            user_id=user_id,
-            category_id=category_id,
-            email=email,
-            address=address,
-            city=city,
-            neighborhood=neighborhood,
-            description=description,
-            latitude=latitude,
-            longitude=longitude,
-            status=status,
-            verification_level=verification_level,
+            name=name, phone=phone, user_id=user_id,
+            category_id=category_id, email=email, address=address,
+            city=city, neighborhood=neighborhood, description=description,
+            latitude=latitude, longitude=longitude,
+            status=status, verification_level=verification_level,
+            slug=slug,
         )
         db_session.add(contact)
         db_session.commit()
         db_session.refresh(contact)
         return contact
-    return _create
+    return _make
 
 
-@pytest.fixture
-def create_review(db_session: Session):
-    """Factory to create reviews linked to a contact and user.
+# ──────────────────────────────────────────────────────────────────────
+# Review / Offer / Report / Utility / Notification / Schedule factories
+# ──────────────────────────────────────────────────────────────────────
 
-    FIXED: Uses is_approved (Boolean) instead of non-existent status field.
-
-    Usage:
-        review = create_review(contact_id=1, rating=5, is_approved=True)
-    """
-    def _create(
-        contact_id: int,
-        user_id: int | None = None,
-        rating: int = 5,
-        comment: str = "Great service!",
-        is_approved: bool = False,
-        reply_text: str | None = None,
-    ) -> Review:
+@pytest.fixture()
+def create_review(db_session: Session, create_user):
+    def _make(*, contact_id: int, user_id: int | None = None,
+              rating: int = 5, comment: str = "Excelente",
+              is_approved: bool = False, **kw) -> Review:
         if user_id is None:
-            unique_id = uuid.uuid4().hex[:8]
-            user = User(
-                username=f"reviewer_{contact_id}_{unique_id}",
-                email=f"reviewer_{contact_id}_{unique_id}@test.com",
-                phone_area_code="0341",
-                phone_number="8888888",
-                password_hash=_hash_password("password123"),
-                role="user",
-            )
-            db_session.add(user)
-            db_session.commit()
-            db_session.refresh(user)
-            user_id = user.id
-
-        review = Review(
-            contact_id=contact_id,
-            user_id=user_id,
-            rating=rating,
-            comment=comment,
-            is_approved=is_approved,
-            reply_text=reply_text,
-        )
-        db_session.add(review)
+            user_id = create_user().id
+        r = Review(contact_id=contact_id, user_id=user_id,
+                   rating=rating, comment=comment,
+                   is_approved=is_approved, **kw)
+        db_session.add(r)
         db_session.commit()
-        db_session.refresh(review)
-        return review
-    return _create
+        db_session.refresh(r)
+        return r
+    return _make
 
 
-@pytest.fixture
+@pytest.fixture()
 def create_offer(db_session: Session):
-    """Factory to create offers with future expires_at.
-
-    FIXED: Uses is_active (not 'active') and removes non-existent starts_at.
-
-    Usage:
-        offer = create_offer(contact_id=1, discount_pct=25)
-    """
-    def _create(
-        contact_id: int,
-        title: str = "Special Offer",
-        description: str = "20% off",
-        discount_pct: int = 20,
-        expires_in_days: int = 7,
-        is_active: bool = True,
-    ) -> Offer:
-        offer = Offer(
-            contact_id=contact_id,
-            title=title,
-            description=description,
+    def _make(*, contact_id: int, title: str = "Oferta",
+              description: str = "20% off", discount_pct: int = 20,
+              expires_in_days: int = 7, is_active: bool = True) -> Offer:
+        o = Offer(
+            contact_id=contact_id, title=title, description=description,
             discount_pct=discount_pct,
             expires_at=datetime.now(timezone.utc) + timedelta(days=expires_in_days),
             is_active=is_active,
         )
-        db_session.add(offer)
+        db_session.add(o)
         db_session.commit()
-        db_session.refresh(offer)
-        return offer
-    return _create
+        db_session.refresh(o)
+        return o
+    return _make
 
 
-@pytest.fixture
-def create_report(db_session: Session):
-    """Factory to create reports for a contact.
-
-    FIXED: Uses user_id (not 'reporter_id') and is_resolved (not 'status').
-
-    Usage:
-        report = create_report(contact_id=1, reason="spam")
-    """
-    def _create(
-        contact_id: int,
-        user_id: int | None = None,
-        reason: str = "spam",
-        details: str = "",
-        is_resolved: bool = False,
-    ) -> Report:
+@pytest.fixture()
+def create_report(db_session: Session, create_user):
+    def _make(*, contact_id: int, user_id: int | None = None,
+              reason: str = "spam", details: str = "") -> Report:
         if user_id is None:
-            unique_id = uuid.uuid4().hex[:8]
-            user = User(
-                username=f"reporter_{contact_id}_{unique_id}",
-                email=f"reporter_{contact_id}_{unique_id}@test.com",
-                phone_area_code="0341",
-                phone_number="7777777",
-                password_hash=_hash_password("password123"),
-                role="user",
-            )
-            db_session.add(user)
-            db_session.commit()
-            db_session.refresh(user)
-            user_id = user.id
-
-        report = Report(
-            contact_id=contact_id,
-            user_id=user_id,
-            reason=reason,
-            details=details,
-            is_resolved=is_resolved,
-        )
-        db_session.add(report)
+            user_id = create_user().id
+        r = Report(contact_id=contact_id, user_id=user_id,
+                   reason=reason, details=details, is_resolved=False)
+        db_session.add(r)
         db_session.commit()
-        db_session.refresh(report)
-        return report
-    return _create
+        db_session.refresh(r)
+        return r
+    return _make
 
 
-@pytest.fixture
+@pytest.fixture()
 def create_utility(db_session: Session):
-    """Factory to create UtilityItem with valid defaults.
-
-    Usage:
-        utility = create_utility(name="Escuela Primaria", type="educacion")
-    """
-    def _create(
-        name: str = "Test Utility",
-        type: str = "otro",
-        phone: str = "1234567",
-        address: str = "Test St 123",
-        schedule: str = "Lun-Vie 9-18",
-        city: str = "Rosario",
-        is_active: bool = True,
-    ) -> UtilityItem:
-        item = UtilityItem(
-            name=name,
-            type=type,
-            phone=phone,
-            address=address,
-            schedule=schedule,
-            city=city,
-            is_active=is_active,
-        )
+    def _make(*, name: str = "Test Utility", type: str = "otro",
+              phone: str = "1234567", address: str = "Calle 1",
+              schedule: str = "Lun-Vie 9-18", city: str = "Rosario",
+              is_active: bool = True) -> UtilityItem:
+        item = UtilityItem(name=name, type=type, phone=phone,
+                           address=address, schedule=schedule,
+                           city=city, is_active=is_active)
         db_session.add(item)
         db_session.commit()
         db_session.refresh(item)
         return item
-    return _create
+    return _make
 
 
-@pytest.fixture
+@pytest.fixture()
 def create_notification(db_session: Session):
-    """Factory to create notifications for a user.
-
-    Usage:
-        notification = create_notification(user_id=1, message="New review!")
-    """
-    def _create(
-        user_id: int,
-        notification_type: str = "review",
-        message: str = "Notification message",
-        contact_id: int | None = None,
-        is_read: bool = False,
-    ) -> Notification:
-        notification = Notification(
-            user_id=user_id,
-            type=notification_type,
-            message=message,
-            contact_id=contact_id,
-            is_read=is_read,
-        )
-        db_session.add(notification)
+    def _make(*, user_id: int, message: str = "Test notification",
+              notification_type: str = "review",
+              is_read: bool = False) -> Notification:
+        n = Notification(user_id=user_id, type=notification_type,
+                         message=message, is_read=is_read)
+        db_session.add(n)
         db_session.commit()
-        db_session.refresh(notification)
-        return notification
-    return _create
+        db_session.refresh(n)
+        return n
+    return _make
 
 
-# ---------------------------------------------------------------------------
-# API factory fixtures (create via HTTP endpoints)
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────
+# API-level helpers
+# ──────────────────────────────────────────────────────────────────────
 
-@pytest.fixture
-def contact_factory(client: TestClient):
-    """Factory to create contacts via the API.
-
-    Usage:
-        contact_id = contact_factory(headers, name="Mi Negocio")
-    """
-    def _create(
-        headers: dict[str, str],
-        name: str = "Test Contact",
-        phone: str = "1234567",
-        **kwargs,
-    ) -> int:
-        payload = {"name": name, "phone": phone}
-        payload.update(kwargs)
-        resp = client.post("/api/contacts", headers=headers, json=payload)
-        assert resp.status_code == 201, f"Failed to create contact: {resp.text}"
-        return resp.json()["id"]
-    return _create
-
-
-@pytest.fixture
-def change_factory(client: TestClient):
-    """Factory to create pending changes on a contact.
-
-    Usage:
-        change_id = change_factory(contact_id, headers, field_name="description", new_value="Nuevo")
-    """
-    def _create(
-        contact_id: int,
-        other_headers: dict[str, str],
-        field_name: str = "description",
-        new_value: str = "Sugerencia",
-    ) -> int | None:
-        resp = client.put(
-            f"/api/contacts/{contact_id}/edit",
-            headers=other_headers,
-            json={field_name: new_value},
-        )
-        assert resp.status_code == 200, f"Failed to create change: {resp.text}"
-        changes_resp = client.get(
-            f"/api/contacts/{contact_id}/changes",
-            headers=other_headers,
-        )
-        if changes_resp.status_code == 200 and changes_resp.json():
-            return changes_resp.json()[-1]["id"]
-        return None
-    return _create
-
-
-# ---------------------------------------------------------------------------
-# JWT helpers for security tests
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def jwt_helpers():
-    """Utility for crafting malicious/edge-case JWT tokens."""
-    from app.config import JWT_SECRET, JWT_ALGORITHM
-
-    class JWTHelpers:
-        @staticmethod
-        def expired_token(user_id: int = 1) -> str:
-            """Token that expired 1 hour ago."""
-            return jwt.encode(
-                {
-                    "sub": str(user_id),
-                    "exp": datetime.now(timezone.utc) - timedelta(hours=1),
-                },
-                JWT_SECRET,
-                algorithm=JWT_ALGORITHM,
-            )
-
-        @staticmethod
-        def wrong_secret_token(user_id: int = 1) -> str:
-            """Token signed with wrong secret."""
-            return jwt.encode(
-                {
-                    "sub": str(user_id),
-                    "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-                },
-                "wrong_secret_key_that_does_not_match",
-                algorithm=JWT_ALGORITHM,
-            )
-
-        @staticmethod
-        def forged_admin_token(user_id: int = 999) -> str:
-            """Valid token structure but for non-existent admin user."""
-            return jwt.encode(
-                {
-                    "sub": str(user_id),
-                    "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-                },
-                JWT_SECRET,
-                algorithm=JWT_ALGORITHM,
-            )
-
-        @staticmethod
-        def token_without_sub() -> str:
-            """Token missing the 'sub' claim."""
-            return jwt.encode(
-                {"exp": datetime.now(timezone.utc) + timedelta(hours=1)},
-                JWT_SECRET,
-                algorithm=JWT_ALGORITHM,
-            )
-
-        @staticmethod
-        def token_with_wrong_algorithm(user_id: int = 1) -> str:
-            """Token signed with HS384 instead of HS256."""
-            return jwt.encode(
-                {
-                    "sub": str(user_id),
-                    "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-                },
-                JWT_SECRET,
-                algorithm="HS384",
-            )
-
-    return JWTHelpers()
-
-
-# ---------------------------------------------------------------------------
-# Bootstrap helper for admin tests
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def bootstrap_admin_once(client: TestClient, db_session: Session):
-    """Ensure exactly one admin exists. Returns admin headers.
-
-    Idempotent: works whether admin already exists or not.
-    Handles rate limiting (429) gracefully by falling back to login.
-    Cleans up existing users with same email/username to avoid UNIQUE constraint
-    conflicts when tests run sequentially with StaticPool SQLite.
-    """
-    from app.models.user import User as UserModel
-
-    admin_email = "admin@test.com"
-    admin_username = "adminuser"
-
-    # Clean up any existing user with same email/username first
-    db_session.query(UserModel).filter(
-        (UserModel.email == admin_email) | (UserModel.username == admin_username)
-    ).delete()
-    db_session.commit()
-
-    # Try to bootstrap
-    captcha = _get_captcha_and_answer(client)
-    resp = client.post("/api/auth/bootstrap-admin", json={
-        "username": admin_username,
-        "email": admin_email,
+def register_user(client: TestClient, **overrides) -> dict:
+    """Register a user via API, return the full JSON response body."""
+    uid = uuid.uuid4().hex[:8]
+    captcha = solve_captcha(client)
+    payload = {
+        "username": overrides.get("username", f"r_{uid}"),
+        "email": overrides.get("email", f"r_{uid}@test.com"),
         "phone_area_code": "0341",
-        "phone_number": "1111111",
-        "password": "adminpass123",
+        "phone_number": "1234567",
+        "password": overrides.get("password", "password123"),
         "captcha_challenge_id": captcha["challenge_id"],
         "captcha_answer": captcha["answer"],
+    }
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 201, f"Register failed: {resp.text}"
+    return resp.json()
+
+
+def login_user(client: TestClient, username_or_email: str,
+               password: str = "password123") -> dict:
+    """Login via API, return full JSON response body."""
+    resp = client.post("/api/auth/login", json={
+        "username_or_email": username_or_email,
+        "password": password,
     })
+    assert resp.status_code == 200, f"Login failed: {resp.text}"
+    return resp.json()
 
-    if resp.status_code == 201:
-        token = resp.json()["token"]
-        return {"Authorization": f"Bearer {token}"}
 
-    # 429 (rate limited) or 403 (already exists) — try login
-    if resp.status_code in [429, 403]:
-        login_resp = client.post("/api/auth/login", json={
-            "username_or_email": admin_username,
-            "password": "adminpass123",
-        })
-        if login_resp.status_code == 200:
-            token = login_resp.json()["token"]
-            return {"Authorization": f"Bearer {token}"}
+def api_create_contact(client: TestClient, headers: dict,
+                       **overrides) -> dict:
+    """Create a contact via API.  Returns the response JSON."""
+    payload = {"name": overrides.pop("name", "API Contact"),
+               "phone": overrides.pop("phone", "9876543")}
+    payload.update(overrides)
+    resp = client.post("/api/contacts", headers=headers, json=payload)
+    assert resp.status_code == 201, f"Create contact failed: {resp.text}"
+    return resp.json()
 
-    raise AssertionError(f"Bootstrap admin failed: {resp.text}")
+
+# ──────────────────────────────────────────────────────────────────────
+# JWT helpers for security tests
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def jwt_helpers():
+    """Craft malicious / edge-case JWT tokens."""
+    from app.config import JWT_SECRET, JWT_ALGORITHM
+
+    class _H:
+        @staticmethod
+        def expired(user_id: int = 1) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def wrong_secret(user_id: int = 1) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                "not_the_real_secret_at_all_xxx", algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def forged_admin(user_id: int = 99999) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def no_sub() -> str:
+            return pyjwt.encode(
+                {"exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def wrong_algo(user_id: int = 1) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm="HS384")
+
+        @staticmethod
+        def non_numeric_sub() -> str:
+            return pyjwt.encode(
+                {"sub": "not_a_number",
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    return _H()

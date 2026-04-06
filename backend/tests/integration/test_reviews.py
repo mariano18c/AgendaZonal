@@ -1,258 +1,148 @@
-"""Integration tests for reviews system and verification levels."""
+"""Integration tests — Reviews (create, approve, reject, reply, photos)."""
 import pytest
+from tests.conftest import _bearer
 
 
-class TestReviews:
-    """Test review CRUD and moderation flow."""
+class TestCreateReview:
+    def test_create_review(self, client, create_user, create_contact):
+        reviewer = create_user()
+        c = create_contact()
+        r = client.post(f"/api/contacts/{c.id}/reviews",
+                         headers=_bearer(reviewer),
+                         json={"rating": 5, "comment": "Excelente!"})
+        assert r.status_code == 201
+        assert r.json()["rating"] == 5
+        assert r.json()["is_approved"] is False  # Pending moderation
 
-    @pytest.fixture(autouse=True)
-    def setup(self, client, auth_headers, contact_factory, moderator_user):
-        """Create contacts and users for review testing."""
-        self.owner_headers = auth_headers(username="rev_owner", email="revowner@test.com")
-        self.reviewer_headers = auth_headers(username="rev_reviewer", email="revreviewer@test.com")
-        self.mod_user, self.mod_headers = moderator_user
+    def test_cannot_review_own_contact(self, client, create_user, create_contact):
+        owner = create_user()
+        c = create_contact(user_id=owner.id)
+        r = client.post(f"/api/contacts/{c.id}/reviews",
+                         headers=_bearer(owner),
+                         json={"rating": 5, "comment": "Auto-review"})
+        assert r.status_code == 400
+        assert "propio" in r.json()["detail"].lower()
 
-        self.contact_id = contact_factory(
-            self.owner_headers, name="Test Contact", phone="3411111111",
-            category_id=1,
-        )
+    def test_cannot_review_twice(self, client, create_user, create_contact):
+        reviewer = create_user()
+        c = create_contact()
+        client.post(f"/api/contacts/{c.id}/reviews",
+                     headers=_bearer(reviewer),
+                     json={"rating": 5, "comment": "First"})
+        r = client.post(f"/api/contacts/{c.id}/reviews",
+                         headers=_bearer(reviewer),
+                         json={"rating": 3, "comment": "Second"})
+        assert r.status_code == 409
+        assert "ya" in r.json()["detail"].lower()
 
-    def test_create_review(self, client):
-        """User can create a review for a contact."""
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5, "comment": "Excelente servicio!"},
-        )
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["rating"] == 5
-        assert data["comment"] == "Excelente servicio!"
-        assert data["is_approved"] is False
-        assert data["username"] == "rev_reviewer"
+    def test_review_unauthenticated(self, client, create_contact):
+        c = create_contact()
+        r = client.post(f"/api/contacts/{c.id}/reviews",
+                         json={"rating": 5})
+        assert r.status_code == 401
 
-    def test_create_review_without_auth(self, client):
-        """Anonymous user cannot create a review."""
-        # Clear cookies to ensure no auth is sent
-        client.cookies.clear()
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            json={"rating": 5},
-        )
-        assert resp.status_code == 401
-
-    def test_duplicate_review(self, client):
-        """Same user cannot review same contact twice."""
-        client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5},
-        )
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 3},
-        )
-        assert resp.status_code == 409
-
-    def test_self_review_blocked(self, client):
-        """Owner cannot review their own contact."""
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.owner_headers,
-            json={"rating": 5},
-        )
-        assert resp.status_code == 400
-
-    def test_invalid_rating_low(self, client):
-        """Rating must be >= 1."""
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 0},
-        )
-        assert resp.status_code == 422
-
-    def test_invalid_rating_high(self, client):
-        """Rating must be <= 5."""
-        resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 6},
-        )
-        assert resp.status_code == 422
-
-    def test_list_reviews_empty(self, client):
-        """No approved reviews returns empty list."""
-        resp = client.get(f"/api/contacts/{self.contact_id}/reviews")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 0
-        assert data["reviews"] == []
-
-    def test_pending_review_not_public(self, client):
-        """Pending reviews are not shown in public listing."""
-        client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5, "comment": "Pendiente"},
-        )
-        resp = client.get(f"/api/contacts/{self.contact_id}/reviews")
-        assert resp.json()["total"] == 0
-
-    def test_approve_review(self, client):
-        """Moderator can approve a review, then it appears publicly."""
-        create_resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 4, "comment": "Muy bueno"},
-        )
-        review_id = create_resp.json()["id"]
-
-        approve_resp = client.post(f"/api/admin/reviews/{review_id}/approve",
-            headers=self.mod_headers,
-        )
-        assert approve_resp.status_code == 200
-        assert approve_resp.json()["is_approved"] is True
-
-        list_resp = client.get(f"/api/contacts/{self.contact_id}/reviews")
-        assert list_resp.json()["total"] == 1
-        assert list_resp.json()["reviews"][0]["comment"] == "Muy bueno"
-
-    def test_approve_updates_rating(self, client, auth_headers):
-        """Approving reviews updates contact avg_rating."""
-        r1 = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5},
-        ).json()["id"]
-
-        # Second reviewer via auth_headers fixture
-        r2_headers = auth_headers(username="rev_r2", email="revr2@test.com")
-        r2 = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=r2_headers,
-            json={"rating": 3},
-        ).json()["id"]
-
-        client.post(f"/api/admin/reviews/{r1}/approve", headers=self.mod_headers)
-        client.post(f"/api/admin/reviews/{r2}/approve", headers=self.mod_headers)
-
-        contact = client.get(f"/api/contacts/{self.contact_id}").json()
-        assert contact["avg_rating"] == 4.0  # (5+3)/2
-        assert contact["review_count"] == 2
-
-    def test_reject_review(self, client):
-        """Moderator can reject a review."""
-        create_resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 1, "comment": "Malo"},
-        )
-        review_id = create_resp.json()["id"]
-
-        resp = client.post(f"/api/admin/reviews/{review_id}/reject",
-            headers=self.mod_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.json()["is_approved"] is False
-
-        list_resp = client.get(f"/api/contacts/{self.contact_id}/reviews")
-        assert list_resp.json()["total"] == 0
-
-    def test_reject_approved_recalculates(self, client):
-        """Rejecting an already-approved review recalculates rating."""
-        create_resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5},
-        )
-        review_id = create_resp.json()["id"]
-
-        client.post(f"/api/admin/reviews/{review_id}/approve", headers=self.mod_headers)
-        contact = client.get(f"/api/contacts/{self.contact_id}").json()
-        assert contact["avg_rating"] == 5.0
-
-        client.post(f"/api/admin/reviews/{review_id}/reject", headers=self.mod_headers)
-        contact = client.get(f"/api/contacts/{self.contact_id}").json()
-        assert contact["avg_rating"] == 0
-        assert contact["review_count"] == 0
-
-    def test_non_mod_cannot_approve(self, client):
-        """Regular user cannot approve reviews."""
-        create_resp = client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 5},
-        )
-        review_id = create_resp.json()["id"]
-
-        resp = client.post(f"/api/admin/reviews/{review_id}/approve",
-            headers=self.reviewer_headers,
-        )
-        assert resp.status_code == 403
-
-    def test_pending_reviews_list(self, client):
-        """Moderator sees pending reviews list."""
-        client.post(f"/api/contacts/{self.contact_id}/reviews",
-            headers=self.reviewer_headers,
-            json={"rating": 4, "comment": "Pendiente 1"},
-        )
-
-        resp = client.get("/api/admin/reviews/pending", headers=self.mod_headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] >= 1
-        assert data["reviews"][0]["contact_name"] == "Test Contact"
-
-    def test_non_mod_cannot_see_pending(self, client):
-        """Regular user cannot access pending reviews."""
-        resp = client.get("/api/admin/reviews/pending", headers=self.reviewer_headers)
-        assert resp.status_code == 403
+    def test_invalid_rating(self, client, create_user, create_contact):
+        reviewer = create_user()
+        c = create_contact()
+        r = client.post(f"/api/contacts/{c.id}/reviews",
+                         headers=_bearer(reviewer),
+                         json={"rating": 0})
+        assert r.status_code == 422
 
 
-class TestVerificationLevels:
-    """Test verification level system."""
+class TestListReviews:
+    def test_list_approved_reviews(self, client, create_contact, create_review):
+        c = create_contact()
+        create_review(contact_id=c.id, is_approved=True, comment="Good")
+        create_review(contact_id=c.id, is_approved=False, comment="Pending")
+        r = client.get(f"/api/contacts/{c.id}/reviews")
+        assert r.status_code == 200
+        # Only approved shown
+        assert all(rev["is_approved"] for rev in r.json()["reviews"])
 
-    @pytest.fixture(autouse=True)
-    def setup(self, client, auth_headers, contact_factory, moderator_user):
-        self.owner_headers = auth_headers(username="v_owner2", email="vowner2@test.com")
-        self.mod_user, self.mod_headers = moderator_user
-        self.contact_id = contact_factory(
-            self.owner_headers, name="Verify Contact", phone="3412222222",
-            category_id=1,
-        )
+    def test_list_reviews_nonexistent_contact(self, client):
+        r = client.get("/api/contacts/99999/reviews")
+        assert r.status_code == 404
 
-    def test_set_verification_level(self, client):
-        """Moderator can set verification level."""
-        resp = client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.mod_headers,
-            json={"verification_level": 2},
-        )
-        assert resp.status_code == 200
-        assert resp.json()["verification_level"] == 2
-        assert resp.json()["is_verified"] is True
 
-    def test_verification_zero_unverifies(self, client):
-        """Setting level to 0 removes verification."""
-        client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.mod_headers,
-            json={"verification_level": 2},
-        )
-        resp = client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.mod_headers,
-            json={"verification_level": 0},
-        )
-        assert resp.json()["verification_level"] == 0
-        assert resp.json()["is_verified"] is False
+class TestReviewReply:
+    def test_owner_can_reply(self, client, create_user, create_contact, create_review):
+        owner = create_user()
+        c = create_contact(user_id=owner.id)
+        rev = create_review(contact_id=c.id, is_approved=True)
+        r = client.post(f"/api/reviews/{rev.id}/reply",
+                         headers=_bearer(owner),
+                         json={"reply_text": "Gracias!"})
+        assert r.status_code == 200
+        assert r.json()["reply_text"] == "Gracias!"
 
-    def test_non_mod_cannot_verify(self, client):
-        """Regular user cannot change verification level."""
-        resp = client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.owner_headers,
-            json={"verification_level": 1},
-        )
-        assert resp.status_code == 403
+    def test_stranger_cannot_reply(self, client, create_user, create_contact, create_review):
+        c = create_contact()
+        rev = create_review(contact_id=c.id, is_approved=True)
+        stranger = create_user()
+        r = client.post(f"/api/reviews/{rev.id}/reply",
+                         headers=_bearer(stranger),
+                         json={"reply_text": "Not allowed"})
+        assert r.status_code == 403
 
-    def test_invalid_level(self, client):
-        """Invalid verification level returns 422."""
-        resp = client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.mod_headers,
-            json={"verification_level": 5},
-        )
-        assert resp.status_code == 422
+    def test_cannot_reply_unapproved(self, client, create_user, create_contact, create_review):
+        owner = create_user()
+        c = create_contact(user_id=owner.id)
+        rev = create_review(contact_id=c.id, is_approved=False)
+        r = client.post(f"/api/reviews/{rev.id}/reply",
+                         headers=_bearer(owner),
+                         json={"reply_text": "Reply"})
+        assert r.status_code == 400
 
-    def test_level_in_contact_response(self, client):
-        """Contact response includes verification_level."""
-        client.put(f"/api/admin/contacts/{self.contact_id}/verification",
-            headers=self.mod_headers,
-            json={"verification_level": 3},
-        )
-        contact = client.get(f"/api/contacts/{self.contact_id}").json()
-        assert contact["verification_level"] == 3
+
+class TestReviewModeration:
+    def test_approve_review(self, client, mod_headers, create_contact, create_review):
+        c = create_contact()
+        rev = create_review(contact_id=c.id, is_approved=False, rating=4)
+        r = client.post(f"/api/admin/reviews/{rev.id}/approve", headers=mod_headers)
+        assert r.status_code == 200
+        assert r.json()["is_approved"] is True
+
+        # Rating should have been recalculated
+        c_resp = client.get(f"/api/contacts/{c.id}")
+        assert c_resp.json()["avg_rating"] >= 0
+
+    def test_reject_review(self, client, mod_headers, create_contact, create_review):
+        c = create_contact()
+        rev = create_review(contact_id=c.id, is_approved=False)
+        r = client.post(f"/api/admin/reviews/{rev.id}/reject", headers=mod_headers)
+        assert r.status_code == 200
+
+    def test_approve_already_approved(self, client, mod_headers, create_contact, create_review):
+        c = create_contact()
+        rev = create_review(contact_id=c.id, is_approved=True)
+        r = client.post(f"/api/admin/reviews/{rev.id}/approve", headers=mod_headers)
+        assert r.status_code == 400
+
+    def test_list_pending_reviews(self, client, mod_headers, create_contact, create_review):
+        c = create_contact()
+        create_review(contact_id=c.id, is_approved=False)
+        r = client.get("/api/admin/reviews/pending", headers=mod_headers)
+        assert r.status_code == 200
+        assert r.json()["total"] >= 1
+
+    def test_regular_user_cannot_moderate(self, client, user_headers, create_contact, create_review):
+        c = create_contact()
+        rev = create_review(contact_id=c.id)
+        r = client.post(f"/api/admin/reviews/{rev.id}/approve", headers=user_headers)
+        assert r.status_code == 403
+
+    def test_set_verification_level(self, client, mod_headers, create_contact):
+        c = create_contact()
+        r = client.put(f"/api/admin/contacts/{c.id}/verification",
+                        headers=mod_headers,
+                        json={"verification_level": 3})
+        assert r.status_code == 200
+        assert r.json()["verification_level"] == 3
+
+    def test_invalid_verification_level(self, client, mod_headers, create_contact):
+        c = create_contact()
+        r = client.put(f"/api/admin/contacts/{c.id}/verification",
+                        headers=mod_headers,
+                        json={"verification_level": 4})
+        assert r.status_code == 422

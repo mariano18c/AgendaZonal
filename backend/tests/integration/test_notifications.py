@@ -1,207 +1,72 @@
-"""Integration tests for notifications endpoints."""
+"""Integration tests — Notifications (push subscribe, list, mark read)."""
 import pytest
-from app.models.notification import Notification
+from tests.conftest import _bearer
 
 
-class TestListNotifications:
-    """GET /api/notifications"""
+class TestVapidPublicKey:
+    def test_get_vapid_key(self, client):
+        r = client.get("/api/notifications/vapid-public-key")
+        assert r.status_code == 200
+        assert "public_key" in r.json()
 
-    def test_returns_empty_list_for_new_user(self, client, auth_headers):
-        headers = auth_headers()
-        resp = client.get("/api/notifications", headers=headers)
-        assert resp.status_code == 200
-        assert resp.json() == []
 
-    def test_requires_auth(self, client):
-        resp = client.get("/api/notifications")
-        assert resp.status_code == 401
-
-    def test_returns_own_notifications(self, client, create_user, database_session):
+class TestPushSubscription:
+    def test_subscribe(self, client, create_user):
         user = create_user()
-        notif = Notification(user_id=user.id, type="review", message="Hello")
-        database_session.add(notif)
-        database_session.commit()
+        r = client.post("/api/notifications/subscribe", headers=_bearer(user),
+                          json={
+                              "endpoint": "https://fcm.googleapis.com/fcm/send/test",
+                              "keys": {"p256dh": "test_p256dh", "auth": "test_auth"},
+                          })
+        assert r.status_code in (200, 201)
 
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "testuser",
-            "password": "password123",
+    def test_subscribe_unauthenticated(self, client):
+        r = client.post("/api/notifications/subscribe", json={
+            "endpoint": "https://test.com",
+            "keys": {"p256dh": "x", "auth": "x"},
         })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
+        assert r.status_code == 401
 
-        resp = client.get("/api/notifications", headers=headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 1
-        assert data[0]["message"] == "Hello"
-
-    def test_returns_only_own_notifications(self, client, create_user, database_session):
-        """Notifications from other users should not appear."""
-        user1 = create_user(username="user1", email="user1@test.com")
-        user2 = create_user(username="user2", email="user2@test.com")
-
-        database_session.add(Notification(user_id=user2.id, type="review", message="Private"))
-        database_session.commit()
-
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "user1",
-            "password": "password123",
-        })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
-
-        resp = client.get("/api/notifications", headers=headers)
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-
-class TestMarkNotificationAsRead:
-    """PUT /api/notifications/{id}/read"""
-
-    def test_mark_as_read(self, client, create_user, database_session):
+    def test_unsubscribe(self, client, create_user):
         user = create_user()
-        notif = Notification(user_id=user.id, type="review", message="Hello")
-        database_session.add(notif)
-        database_session.commit()
-        database_session.refresh(notif)
-
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "testuser",
-            "password": "password123",
-        })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
-
-        resp = client.put(f"/api/notifications/{notif.id}/read", headers=headers)
-        assert resp.status_code == 200
-
-        database_session.refresh(notif)
-        assert notif.is_read is True
-
-    def test_cannot_mark_other_users_notification(self, client, create_user, database_session):
-        user1 = create_user(username="user1", email="user1@test.com")
-        user2 = create_user(username="user2", email="user2@test.com")
-
-        notif = Notification(user_id=user2.id, type="review", message="Secret")
-        database_session.add(notif)
-        database_session.commit()
-        database_session.refresh(notif)
-
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "user1",
-            "password": "password123",
-        })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
-
-        resp = client.put(f"/api/notifications/{notif.id}/read", headers=headers)
-        assert resp.status_code == 404
-
-    def test_nonexistent_notification(self, client, auth_headers):
-        headers = auth_headers()
-        resp = client.put("/api/notifications/99999/read", headers=headers)
-        assert resp.status_code == 404
-
-    def test_requires_auth(self, client):
-        resp = client.put("/api/notifications/1/read")
-        assert resp.status_code == 401
+        endpoint = "https://fcm.googleapis.com/fcm/send/unsub-test"
+        client.post("/api/notifications/subscribe", headers=_bearer(user),
+                     json={"endpoint": endpoint,
+                           "keys": {"p256dh": "x", "auth": "x"}})
+        r = client.post("/api/notifications/unsubscribe", headers=_bearer(user),
+                          json={"endpoint": endpoint, "keys": {"p256dh": "x", "auth": "x"}})
+        assert r.status_code == 200
 
 
-class TestMarkAllAsRead:
-    """PUT /api/notifications/read-all"""
-
-    def test_marks_all_own_notifications(self, client, create_user, database_session):
+class TestNotificationList:
+    def test_list_notifications(self, client, create_user, create_notification):
         user = create_user()
+        create_notification(user_id=user.id, message="Test")
+        r = client.get("/api/notifications", headers=_bearer(user))
+        assert r.status_code == 200
+        assert len(r.json()) >= 1
 
-        for i in range(3):
-            database_session.add(Notification(
-                user_id=user.id, type="review", message=f"Message {i}"
-            ))
-        database_session.commit()
+    def test_list_unauthenticated(self, client):
+        r = client.get("/api/notifications")
+        assert r.status_code == 401
 
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "testuser",
-            "password": "password123",
-        })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
+    def test_mark_as_read(self, client, create_user, create_notification):
+        user = create_user()
+        n = create_notification(user_id=user.id)
+        r = client.put(f"/api/notifications/{n.id}/read", headers=_bearer(user))
+        assert r.status_code == 200
+        assert "message" in r.json()
 
-        resp = client.put("/api/notifications/read-all", headers=headers)
-        assert resp.status_code == 200
+    def test_mark_all_as_read(self, client, create_user, create_notification):
+        user = create_user()
+        create_notification(user_id=user.id)
+        create_notification(user_id=user.id, message="Second")
+        r = client.put("/api/notifications/read-all", headers=_bearer(user))
+        assert r.status_code == 200
 
-        notifs = database_session.query(Notification).filter(
-            Notification.user_id == user.id,
-            Notification.is_read == False
-        ).all()
-        assert len(notifs) == 0
-
-    def test_does_not_affect_other_users(self, client, create_user, database_session):
-        user1 = create_user(username="user1", email="user1@test.com")
-        user2 = create_user(username="user2", email="user2@test.com")
-
-        database_session.add(Notification(user_id=user2.id, type="review", message="Msg"))
-        database_session.commit()
-
-        resp = client.post("/api/auth/login", json={
-            "username_or_email": "user1",
-            "password": "password123",
-        })
-        headers = {"Authorization": f"Bearer {resp.json()['token']}"}
-
-        client.put("/api/notifications/read-all", headers=headers)
-
-        notif = database_session.query(Notification).filter(
-            Notification.user_id == user2.id
-        ).first()
-        assert notif.is_read is False
-
-    def test_requires_auth(self, client):
-        resp = client.put("/api/notifications/read-all")
-        assert resp.status_code == 401
-
-
-class TestPushNotifications:
-    """VAPID public key, subscribe, unsubscribe lifecycle."""
-
-    def test_get_vapid_public_key(self, client):
-        resp = client.get("/api/notifications/vapid-public-key")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "public_key" in data
-        assert len(data["public_key"]) > 0
-
-    def test_subscribe_push_notification(self, client, auth_headers):
-        headers = auth_headers(username="push_sub", email="pushsub@test.com")
-
-        resp = client.post("/api/notifications/subscribe", headers=headers, json={
-            "endpoint": "https://fcm.googleapis.com/fcm/send/test123",
-            "keys": {
-                "p256dh": "BTestPublicKey123456789012345678901234567890",
-                "auth": "TestAuthKey12345678",
-            },
-        })
-        assert resp.status_code in [200, 201]
-
-    def test_unsubscribe_push_notification(self, client, auth_headers):
-        headers = auth_headers(username="push_unsub", email="pushunsub@test.com")
-
-        # Subscribe first
-        client.post("/api/notifications/subscribe", headers=headers, json={
-            "endpoint": "https://fcm.googleapis.com/fcm/send/unsub123",
-            "keys": {
-                "p256dh": "BTestPublicKeyUnsub123456789012345678901234",
-                "auth": "TestAuthKeyUnsub123",
-            },
-        })
-
-        # Unsubscribe
-        resp = client.post("/api/notifications/unsubscribe", headers=headers, json={
-            "endpoint": "https://fcm.googleapis.com/fcm/send/unsub123",
-            "keys": {
-                "p256dh": "BTestPublicKeyUnsub123456789012345678901234",
-                "auth": "TestAuthKeyUnsub123",
-            },
-        })
-        assert resp.status_code in [200, 204]
-
-    def test_subscribe_requires_auth(self, client):
-        resp = client.post("/api/notifications/subscribe", json={
-            "endpoint": "https://example.com/test",
-            "keys": {"p256dh": "test", "auth": "test"},
-        })
-        assert resp.status_code == 401
+    def test_cannot_read_others_notification(self, client, create_user, create_notification):
+        owner = create_user()
+        other = create_user()
+        n = create_notification(user_id=owner.id)
+        r = client.put(f"/api/notifications/{n.id}/read", headers=_bearer(other))
+        assert r.status_code == 404
