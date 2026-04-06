@@ -30,6 +30,7 @@ class UserResponse(BaseModel):
     phone_number: str
     role: str
     is_active: bool
+    status: str = "active"  # derived: active/pending/deactivated
     deactivated_at: datetime | None = None
     deactivated_by: int | None = None
     created_at: datetime | None = None

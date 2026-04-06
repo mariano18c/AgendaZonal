@@ -18,9 +18,11 @@
   </nav>
   <main class="max-w-6xl mx-auto px-4 py-8">
     <div id="breadcrumbs"></div>
-    <h1 class="text-2xl font-bold text-gray-800 mb-6">⭐ Moderación de Reseñas</h1>
-    <div id="reviewsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
-    <div id="pagination" class="mt-4"></div>
+    <div id="content">
+      <h1 class="text-2xl font-bold text-gray-800 mb-6">⭐ Moderación de Reseñas</h1>
+      <div id="reviewsContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+      <div id="pagination" class="mt-4"></div>
+    </div>
   </main>
   <script>
     let currentPage = 1;
@@ -55,8 +57,59 @@
           <a href="/profile?id=${r.contact_id}" class="text-blue-600 hover:underline self-center text-sm ml-2">Ver contacto →</a>
         </div></div>`;
     }
-    async function approveReview(id) { try { await apiRequest(`/api/admin/reviews/${id}/approve`, { method: 'POST' }); const card = document.getElementById(`review-${id}`); if (card) card.remove(); loadPendingReviews(); } catch (err) { alert('Error: ' + err.message); } }
-    async function rejectReview(id) { try { await apiRequest(`/api/admin/reviews/${id}/reject`, { method: 'POST' }); const card = document.getElementById(`review-${id}`); if (card) card.remove(); loadPendingReviews(); } catch (err) { alert('Error: ' + err.message); } }
+    async function approveReview(id) {
+      const btn = event.target.closest('button');
+      const card = document.getElementById(`review-${id}`);
+      
+      // Show loading state BEFORE API call
+      setButtonLoading(btn, true);
+      if (card) card.classList.add('opacity-50', 'transition-opacity');
+
+      try {
+        await apiRequest(`/api/admin/reviews/${id}/approve`, { method: 'POST' });
+        showInlineAlert('✅ Reseña aprobada correctamente', 'success');
+        // Keep card visible briefly to show success, then reload
+        if (card) {
+          card.style.backgroundColor = '#d1fae5'; // green-50
+          card.style.transition = 'all 0.3s ease';
+          await new Promise(r => setTimeout(r, 300));
+        }
+        await loadPendingReviews();
+      } catch (err) {
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+        if (card) card.classList.remove('opacity-50');
+      } finally {
+        setButtonLoading(btn, false);
+        if (card) card.classList.remove('opacity-50');
+      }
+    }
+
+    async function rejectReview(id) {
+      const btn = event.target.closest('button');
+      const card = document.getElementById(`review-${id}`);
+      
+      // Show loading state BEFORE API call
+      setButtonLoading(btn, true);
+      if (card) card.classList.add('opacity-50', 'transition-opacity');
+
+      try {
+        await apiRequest(`/api/admin/reviews/${id}/reject`, { method: 'POST' });
+        showInlineAlert('✅ Reseña rechazada correctamente', 'success');
+        // Keep card visible briefly to show success, then reload
+        if (card) {
+          card.style.backgroundColor = '#fee2e2'; // red-50
+          card.style.transition = 'all 0.3s ease';
+          await new Promise(r => setTimeout(r, 300));
+        }
+        await loadPendingReviews();
+      } catch (err) {
+        showInlineAlert('❌ Error: ' + err.message, 'error');
+        if (card) card.classList.remove('opacity-50');
+      } finally {
+        setButtonLoading(btn, false);
+        if (card) card.classList.remove('opacity-50');
+      }
+    }
     loadPendingReviews();
   </script>
     <script>

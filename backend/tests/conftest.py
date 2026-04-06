@@ -472,7 +472,11 @@ def create_notification(db_session: Session):
 # ──────────────────────────────────────────────────────────────────────
 
 def register_user(client: TestClient, **overrides) -> dict:
-    """Register a user via API, return the full JSON response body."""
+    """Register a user via API, return the full JSON response body.
+    
+    After pending activation change, returns {message, username} without token.
+    Use create_user() fixture for creating active users directly in DB.
+    """
     uid = uuid.uuid4().hex[:8]
     captcha = solve_captcha(client)
     payload = {

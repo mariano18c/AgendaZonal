@@ -10,6 +10,15 @@ from app.auth import get_current_user
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
+def get_user_status(user: User) -> str:
+    """Derive user status from is_active and deactivated_at fields."""
+    if user.is_active:
+        return "active"
+    if user.deactivated_at is None:
+        return "pending"
+    return "deactivated"
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
     """Dependency to require admin role"""
     if user.role != 'admin':
@@ -28,7 +37,7 @@ def list_active_users_simple(
 
 @router.get("")
 def list_users(
-    filter: str = Query("all", description="Filter: all, active, inactive"),
+    filter: str = Query("all", description="Filter: all, active, inactive, pending"),
     role: str | None = Query(None, description="Filter by role: user, moderator, admin"),
     username: str | None = Query(None, description="Filter by username (partial match)"),
     skip: int = Query(0, ge=0),
@@ -42,6 +51,8 @@ def list_users(
         query = query.filter(User.is_active == True)
     elif filter == "inactive":
         query = query.filter(User.is_active == False)
+    elif filter == "pending":
+        query = query.filter(User.is_active == False, User.deactivated_at == None)
     if role:
         query = query.filter(User.role == role)
     if username:
@@ -60,6 +71,8 @@ def list_users(
                 "phone_number": u.phone_number,
                 "role": u.role,
                 "is_active": u.is_active,
+                "status": get_user_status(u),
+                "deactivated_at": u.deactivated_at,
                 "created_at": u.created_at,
             }
             for u in users
@@ -250,6 +263,55 @@ def activate_user(
     user.is_active = True
     user.deactivated_at = None
     user.deactivated_by = None
+    db.commit()
+    db.refresh(user)
+    
+    return user
+
+
+@router.post("/{user_id}/approve", response_model=UserResponse)
+def approve_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Approve a pending user registration (admin only).
+    Sets is_active=True, clearing deactivated_at and deactivated_by.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    if user.is_active:
+        raise HTTPException(status_code=400, detail="El usuario ya está activo.")
+    
+    user.is_active = True
+    user.deactivated_at = None
+    user.deactivated_by = None
+    db.commit()
+    db.refresh(user)
+    
+    return user
+
+
+@router.post("/{user_id}/reject", response_model=UserResponse)
+def reject_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Reject a pending user registration (admin only).
+    Sets deactivated_at to now, marking the user as permanently rejected.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    if user.deactivated_at is not None:
+        raise HTTPException(status_code=400, detail="El usuario ya fue rechazado o desactivado.")
+    
+    user.deactivated_at = datetime.now(timezone.utc)
+    user.deactivated_by = admin.id
     db.commit()
     db.refresh(user)
     

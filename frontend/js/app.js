@@ -6,26 +6,12 @@ async function updateNavbar() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (isLoggedIn && user) {
-    // Check for pending changes
-    let pendingBadge = '';
     let adminLink = '';
-    
-    try {
-      const pending = await getPendingContacts();
-      if (pending.length > 0) {
-        const totalCount = pending.reduce((sum, c) => sum + c.pending_changes_count, 0);
-        pendingBadge = `<a href="/pending" class="relative text-yellow-600 hover:text-yellow-800">
-          ⏳ Pendientes
-          <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full px-1.5">${totalCount}</span>
-        </a>`;
-      }
-    } catch (err) {
-      // User doesn't have permission to see pending
-    }
     
     // Admin/moderator links
     if (user.role === 'admin' || user.role === 'moderator') {
       adminLink = `
+        <a href="/pending" class="text-yellow-600 hover:text-yellow-800">⏳ Pendientes</a>
         <a href="/dashboard" class="text-gray-600 hover:text-gray-800">📊 Dashboard</a>
         <a href="/admin/reviews" class="text-gray-600 hover:text-gray-800">⭐ Reseñas</a>
         <a href="/admin/reports" class="text-gray-600 hover:text-gray-800">🚩 Reportes</a>
@@ -44,7 +30,6 @@ async function updateNavbar() {
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
         <span class="text-gray-700">Hola, ${user.username}</span>
-        ${pendingBadge}
         <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
         ${pushBtnHtml}
@@ -70,6 +55,93 @@ function showAlert(message, type = 'error') {
   alertDiv.textContent = message;
   document.body.appendChild(alertDiv);
   setTimeout(() => alertDiv.remove(), 3000);
+}
+
+// ============================================
+// Reusable approval/rejection UX pattern
+// ============================================
+let alertTimeout = null;
+
+/**
+ * Show inline alert message (replaces page content for better visibility)
+ * @param {string} message - The message to display
+ * @param {string} type - 'success', 'error', or 'warning'
+ * @param {string} containerId - Optional container ID (defaults to 'mainContent')
+ */
+function showInlineAlert(message, type, containerId = 'content') {
+  const container = document.getElementById(containerId);
+  if (!container) {
+    // Fallback to showAlert if no container found
+    showAlert(message, type);
+    return;
+  }
+  
+  const existingAlert = container.querySelector('.inline-alert');
+  if (existingAlert) existingAlert.remove();
+
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `inline-alert mb-4 rounded-lg p-4 text-center font-medium ${
+    type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+    type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
+    'bg-yellow-50 text-yellow-800 border border-yellow-200'
+  }`;
+  alertDiv.textContent = message;
+  
+  // Insert at the top of container
+  container.insertBefore(alertDiv, container.firstChild);
+
+  if (alertTimeout) clearTimeout(alertTimeout);
+  alertTimeout = setTimeout(() => alertDiv.remove(), 5000);
+}
+
+/**
+ * Set button loading state
+ * @param {HTMLElement} btn - The button element
+ * @param {boolean} loading - True to show loading, false to restore
+ */
+function setButtonLoading(btn, loading) {
+  if (!btn) return;
+  
+  if (loading) {
+    btn.dataset.originalText = btn.textContent;
+    btn.textContent = 'Procesando...';
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+  } else {
+    btn.textContent = btn.dataset.originalText || btn.textContent;
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
+}
+
+/**
+ * Generic action handler for approve/reject operations
+ * @param {Function} apiCall - Async function that performs the action
+ * @param {string} successMessage - Message to show on success
+ * @param {Function} onSuccess - Optional callback on success (e.g., reload data)
+ * @param {Event} event - The click event
+ */
+async function handleAction(apiCall, successMessage, onSuccess, event) {
+  const btn = event.target.closest('button');
+  const card = btn?.closest('.bg-white');
+  
+  // Show processing state
+  if (btn) setButtonLoading(btn, true);
+  if (card) card.classList.add('opacity-50');
+
+  try {
+    await apiCall();
+    showInlineAlert(successMessage, 'success');
+    
+    if (onSuccess) {
+      await onSuccess();
+    }
+  } catch (err) {
+    showInlineAlert('Error: ' + err.message, 'error');
+    if (card) card.classList.remove('opacity-50');
+  } finally {
+    if (btn) setButtonLoading(btn, false);
+  }
 }
 
 function formatDate(dateString) {

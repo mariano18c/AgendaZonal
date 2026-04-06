@@ -70,8 +70,7 @@ async function register(data) {
     method: 'POST',
     body: JSON.stringify(data),
   });
-  setToken(response.token);
-  setUser(response.user);
+  // Pending registration returns {message, username} — NO token
   return response;
 }
 
@@ -271,6 +270,18 @@ async function deactivateUser(userId) {
 
 async function activateUser(userId) {
   return apiRequest(`/api/users/${userId}/activate`, {
+    method: 'POST',
+  });
+}
+
+async function approveUser(userId) {
+  return apiRequest(`/api/users/${userId}/approve`, {
+    method: 'POST',
+  });
+}
+
+async function rejectUser(userId) {
+  return apiRequest(`/api/users/${userId}/reject`, {
     method: 'POST',
   });
 }

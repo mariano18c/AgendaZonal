@@ -1,5 +1,6 @@
 """Integration tests — Users admin CRUD, role, deactivate, password reset."""
 import pytest
+from datetime import datetime, timezone
 from tests.conftest import _bearer
 
 
@@ -22,6 +23,23 @@ class TestListUsers:
         r = client.get("/api/users", headers=admin_headers,
                         params={"filter": "inactive"})
         assert r.status_code == 200
+
+    def test_list_users_filter_pending(self, client, admin_headers, db_session, create_user):
+        """filter=pending returns only is_active=False AND deactivated_at IS NULL."""
+        # Create a pending user (is_active=False, deactivated_at=None)
+        pending = create_user(is_active=False)
+        # Create a deactivated user (is_active=False, deactivated_at set)
+        deactivated = create_user(is_active=False)
+        deactivated.deactivated_at = datetime.now(timezone.utc)
+        db_session.commit()
+        db_session.refresh(deactivated)
+
+        r = client.get("/api/users", headers=admin_headers,
+                        params={"filter": "pending"})
+        assert r.status_code == 200
+        users = r.json()["users"]
+        assert len(users) >= 1
+        assert all(u["status"] == "pending" for u in users)
 
     def test_list_users_filter_role(self, client, admin_headers, create_user):
         create_user(role="moderator")
@@ -57,6 +75,18 @@ class TestListUsers:
         if r.json():
             assert "id" in r.json()[0]
             assert "username" in r.json()[0]
+
+    def test_list_users_includes_status_field(self, client, admin_headers, create_user):
+        """All users in list response include derived status field."""
+        u = create_user()
+        r = client.get("/api/users", headers=admin_headers)
+        assert r.status_code == 200
+        users = r.json()["users"]
+        assert all("status" in u for u in users)
+        # Find our user
+        our_user = next((x for x in users if x["id"] == u.id), None)
+        assert our_user is not None
+        assert our_user["status"] == "active"
 
 
 class TestGetUser:
@@ -195,4 +225,54 @@ class TestResetPassword:
         r = client.post("/api/users/99999/reset-password",
                           headers=admin_headers,
                           json={"new_password": "newpassword123"})
+        assert r.status_code == 404
+
+
+class TestApproveReject:
+    def test_approve_pending_user(self, client, admin_headers, create_user):
+        u = create_user(is_active=False)  # pending: deactivated_at is None
+        r = client.post(f"/api/users/{u.id}/approve", headers=admin_headers)
+        assert r.status_code == 200
+        assert r.json()["is_active"] is True
+        assert r.json()["deactivated_at"] is None
+
+    def test_approve_already_active_user(self, client, admin_headers, create_user):
+        u = create_user(is_active=True)
+        r = client.post(f"/api/users/{u.id}/approve", headers=admin_headers)
+        assert r.status_code == 400
+        assert "ya está activo" in r.json()["detail"].lower()
+
+    def test_reject_pending_user(self, client, admin_headers, create_user, admin_user):
+        u = create_user(is_active=False)  # pending
+        r = client.post(f"/api/users/{u.id}/reject", headers=admin_headers)
+        assert r.status_code == 200
+        assert r.json()["is_active"] is False
+        assert r.json()["deactivated_at"] is not None
+        assert r.json()["deactivated_by"] == admin_user.id
+
+    def test_reject_already_deactivated_user(self, client, admin_headers, db_session, create_user):
+        u = create_user(is_active=False)
+        u.deactivated_at = datetime.now(timezone.utc)
+        db_session.commit()
+        db_session.refresh(u)
+        r = client.post(f"/api/users/{u.id}/reject", headers=admin_headers)
+        assert r.status_code == 400
+        assert "ya fue rechazado" in r.json()["detail"].lower()
+
+    def test_approve_non_admin_forbidden(self, client, user_headers, create_user):
+        u = create_user(is_active=False)
+        r = client.post(f"/api/users/{u.id}/approve", headers=user_headers)
+        assert r.status_code == 403
+
+    def test_reject_non_admin_forbidden(self, client, user_headers, create_user):
+        u = create_user(is_active=False)
+        r = client.post(f"/api/users/{u.id}/reject", headers=user_headers)
+        assert r.status_code == 403
+
+    def test_approve_nonexistent(self, client, admin_headers):
+        r = client.post("/api/users/99999/approve", headers=admin_headers)
+        assert r.status_code == 404
+
+    def test_reject_nonexistent(self, client, admin_headers):
+        r = client.post("/api/users/99999/reject", headers=admin_headers)
         assert r.status_code == 404
