@@ -8,6 +8,9 @@ dist/
 build/
 *.egg
 
+# Data imports
+data_import/
+
 # Virtual environment
 backend/venv/
 venv/
