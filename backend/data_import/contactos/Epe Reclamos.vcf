@@ -1,9 +1,0 @@
-BEGIN:VCARD
-VERSION:3.0
-N:Reclamos;Epe;;;
-FN:Epe Reclamos
-item1.TEL;waid=5493425101000:+54 9 342 510-1000
-item1.X-ABLabel:Móvil
-X-WA-BIZ-DESCRIPTION:Asistente Automático para generación de reclamos técnicos de la Empresa Provincial de la Energía de Santa Fe. Solo se admiten mensajes de texto.
-X-WA-BIZ-NAME:Epe Reclamos
-END:VCARD
