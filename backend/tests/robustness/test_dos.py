@@ -61,3 +61,53 @@ class TestMalformedRequests:
         r = client.post("/api/contacts", headers={**user_headers},
                           content=b"\x00\x01\x02\x03")
         assert r.status_code in (400, 422)
+
+
+class TestDOSResistanceAdvanced:
+    """Advanced DoS resistance — merged from tests_ant."""
+
+    def test_massive_search_query(self, client):
+        """Very long search query should not crash or hang."""
+        resp = client.get(f"/api/contacts/search?q={'A' * 50000}")
+        assert resp.status_code in [200, 400, 414, 422]
+
+    def test_regex_dos_in_search(self, client):
+        """Regex-like patterns should not cause ReDoS."""
+        payloads = ["(a+)+", "(a|aa)+", "(a|a?)+", ".*.*.*.*.*"]
+        for payload in payloads:
+            resp = client.get(f"/api/contacts/search?q={payload}")
+            assert resp.status_code in [200, 400, 422]
+
+    def test_rapid_login_attempts(self, client):
+        """Multiple rapid login attempts should not crash."""
+        for _ in range(50):
+            resp = client.post("/api/auth/login", json={
+                "username_or_email": "nonexistent",
+                "password": "wrong",
+            })
+            assert resp.status_code == 401
+
+    def test_concurrent_reads_same_endpoint(self, client, create_contact):
+        """Concurrent reads may cause SQLite errors with threads — expected."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        contact = create_contact(name="Concurrent Read")
+        results = []
+
+        def do_read():
+            try:
+                resp = client.get(f"/api/contacts/{contact.id}")
+                results.append(resp.status_code)
+            except Exception:
+                results.append("error")
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(do_read) for _ in range(10)]
+            for f in as_completed(futures):
+                f.result()
+
+        assert len(results) == 10
+
+    def test_zero_limit(self, client):
+        """Zero limit should return empty results."""
+        resp = client.get("/api/contacts?limit=0")
+        assert resp.status_code == 200

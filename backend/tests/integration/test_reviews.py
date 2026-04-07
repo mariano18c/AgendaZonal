@@ -146,3 +146,33 @@ class TestReviewModeration:
                         headers=mod_headers,
                         json={"verification_level": 4})
         assert r.status_code == 422
+
+
+class TestReviewsBatchFetch:
+    """N+1 query validation — merged from tests_ant."""
+
+    def test_list_reviews_with_multiple_reviews(self, client, create_user, create_contact, db_session):
+        """GET reviews should return enriched data with usernames (batch fetch)."""
+        from app.models.review import Review
+        owner = create_user(username="reviewowner", email="reviewowner@test.com")
+        c = create_contact(user_id=owner.id, name="Review Target")
+        reviewer1 = create_user(username="reviewer1", email="reviewer1@test.com")
+        reviewer2 = create_user(username="reviewer2", email="reviewer2@test.com")
+        reviewer3 = create_user(username="reviewer3", email="reviewer3@test.com")
+        for i, reviewer in enumerate([reviewer1, reviewer2, reviewer3]):
+            review = Review(
+                contact_id=c.id, user_id=reviewer.id,
+                rating=4 + (i % 2), comment=f"Review {i}", is_approved=True,
+            )
+            db_session.add(review)
+        db_session.commit()
+        resp = client.get(f"/api/contacts/{c.id}/reviews")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "reviews" in data
+        assert "total" in data
+        assert len(data["reviews"]) == 3
+        usernames = {r["username"] for r in data["reviews"]}
+        assert "reviewer1" in usernames
+        assert "reviewer2" in usernames
+        assert "reviewer3" in usernames

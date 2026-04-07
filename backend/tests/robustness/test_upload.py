@@ -95,3 +95,44 @@ class TestContactPhotos:
                               files={"file": (f"photo{i}.jpg", img, "image/jpeg")})
             if i >= 5:
                 assert r.status_code == 400
+
+
+class TestUploadValidationAdvanced:
+    """Additional upload validation — merged from tests_ant."""
+
+    def test_oversized_file_rejected(self, client, auth_headers):
+        """Files larger than 5MB should be rejected."""
+        import io
+        headers = auth_headers(username="upload_test", email="uploadtest@test.com")
+        create_resp = client.post("/api/contacts", headers=headers, json={
+            "name": "Upload Test",
+            "phone": "3417777777",
+        })
+        assert create_resp.status_code == 201
+        cid = create_resp.json()["id"]
+        large_file = io.BytesIO(b"\x00" * (6 * 1024 * 1024))  # 6MB
+        resp = client.post(
+            f"/api/contacts/{cid}/photos",
+            headers=headers,
+            files={"file": ("large.jpg", large_file, "image/jpeg")},
+        )
+        assert resp.status_code in [400, 413, 422], \
+            f"Oversized file should be rejected, got {resp.status_code}"
+
+    def test_empty_file_rejected(self, client, auth_headers):
+        """Empty file should be rejected."""
+        import io
+        headers = auth_headers(username="upload_test3", email="uploadtest3@test.com")
+        create_resp = client.post("/api/contacts", headers=headers, json={
+            "name": "Empty File Test",
+            "phone": "3415555555",
+        })
+        cid = create_resp.json()["id"]
+        empty_file = io.BytesIO(b"")
+        resp = client.post(
+            f"/api/contacts/{cid}/photos",
+            headers=headers,
+            files={"file": ("empty.jpg", empty_file, "image/jpeg")},
+        )
+        assert resp.status_code in [400, 422], \
+            f"Empty file should be rejected, got {resp.status_code}"

@@ -403,3 +403,37 @@ class TestPendingContacts:
     def test_list_pending_unauthenticated(self, client):
         r = client.get("/api/contacts/pending")
         assert r.status_code == 401
+
+
+class TestContactsAdvanced:
+    """Additional contact endpoint coverage — merged from tests_ant."""
+
+    def test_list_contacts_by_category(self, client, create_contact):
+        """GET /api/contacts should filter by category."""
+        c = create_contact(category_id=1)  # Use existing category (Plomero)
+        r = client.get("/api/contacts", params={"category_id": 1})
+        assert r.status_code == 200
+        assert r.json()["total"] >= 1
+
+    def test_related_businesses_no_geo(self, client, auth_headers):
+        """GET related businesses should return empty if no geo data."""
+        headers = auth_headers(username="relateduser", email="relateduser@test.com")
+        resp = client.post("/api/contacts", headers=headers, json={
+            "name": "No Geo", "phone": "1234567",
+        })
+        cid = resp.json()["id"]
+        resp = client.get(f"/api/contacts/{cid}/related")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_lead_registration_optional_auth(self, client, auth_headers, create_contact):
+        """POST leads should work with or without auth."""
+        c = create_contact(name="Lead Target")
+        # Without auth
+        resp = client.post(f"/api/contacts/{c.id}/leads")
+        assert resp.status_code == 201
+
+    def test_lead_requires_contact_exist(self, client):
+        """POST leads should return 404 for non-existent contact."""
+        resp = client.post("/api/contacts/99999/leads")
+        assert resp.status_code == 404

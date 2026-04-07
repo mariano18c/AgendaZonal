@@ -82,3 +82,15 @@ class TestAdminReportLists:
         create_contact(status="flagged")
         r = client.get("/api/admin/reports/flagged", headers=mod_headers)
         assert r.status_code == 200
+
+
+class TestReportsAdvanced:
+    """Additional report coverage — merged from tests_ant."""
+
+    def test_report_requires_auth(self, client, create_contact):
+        """POST report without auth should return 401."""
+        c = create_contact()
+        resp = client.post(f"/api/contacts/{c.id}/report", json={
+            "reason": "spam", "details": "This is spam",
+        })
+        assert resp.status_code == 401

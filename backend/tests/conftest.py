@@ -160,6 +160,16 @@ def db_session(test_engine) -> Generator[Session, None, None]:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Backward compatibility alias (tests_ant uses 'database_session')
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def database_session(db_session) -> Generator[Session, None, None]:
+    """Alias for db_session — backward compatibility with tests_ant."""
+    return db_session
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Dependency override
 # ──────────────────────────────────────────────────────────────────────
 
@@ -328,6 +338,35 @@ def mod_user(create_user) -> User:
 def mod_headers(mod_user) -> dict[str, str]:
     """Moderator Bearer headers."""
     return _bearer(mod_user)
+
+
+@pytest.fixture()
+def moderator_user(create_user, db_session):
+    """Create a moderator user and return (user, headers) tuple.
+    
+    Backward compatibility with tests_ant fixtures.
+    """
+    import uuid
+    from app.models.user import User
+    from app.auth import create_token
+    
+    uid = uuid.uuid4().hex[:8]
+    user = User(
+        username=f"mod_{uid}",
+        email=f"mod_{uid}@test.com",
+        phone_area_code="0341",
+        phone_number="1234567",
+        password_hash=_hash("password123"),
+        role="moderator",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    
+    token = create_token(user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+    return (user, headers)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -566,4 +605,192 @@ def jwt_helpers():
                  "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
                 JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+        @staticmethod
+        def none_algorithm(user_id: int = 1) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm="none")
+
+        @staticmethod
+        def empty_sub() -> str:
+            return pyjwt.encode(
+                {"sub": "",
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def missing_exp(user_id: int = 1) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def future_exp(user_id: int = 1, days: int = 365) -> str:
+            return pyjwt.encode(
+                {"sub": str(user_id),
+                 "exp": datetime.now(timezone.utc) + timedelta(days=days)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def negative_sub() -> str:
+            return pyjwt.encode(
+                {"sub": "-1",
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def float_sub() -> str:
+            return pyjwt.encode(
+                {"sub": "1.5",
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        @staticmethod
+        def huge_sub() -> str:
+            return pyjwt.encode(
+                {"sub": str(2**63 - 1),
+                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+                JWT_SECRET, algorithm=JWT_ALGORITHM)
+
     return _H()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# API-level factory fixtures
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def contact_factory(client: TestClient):
+    """Factory: create a contact via the API, return its ID.
+
+    Usage::
+
+        contact_id = contact_factory(user_headers, name="Mi Negocio")
+    """
+    def _create(
+        headers: dict[str, str],
+        name: str = "Test Contact",
+        phone: str = "1234567",
+        **kwargs,
+    ) -> int:
+        data = api_create_contact(client, headers, name=name, phone=phone, **kwargs)
+        return data["id"]
+    return _create
+
+
+@pytest.fixture()
+def change_factory(client: TestClient):
+    """Factory: create a pending change on a contact, return its ID.
+
+    Usage::
+
+        change_id = change_factory(contact.id, user_headers,
+                                    field_name="description", new_value="Nuevo")
+    """
+    def _create(
+        contact_id: int,
+        headers: dict[str, str],
+        field_name: str = "description",
+        new_value: str = "Sugerencia",
+    ) -> int | None:
+        resp = client.put(
+            f"/api/contacts/{contact_id}/edit",
+            headers=headers,
+            json={field_name: new_value},
+        )
+        assert resp.status_code == 200, f"Failed to create change: {resp.text}"
+        changes_resp = client.get(
+            f"/api/contacts/{contact_id}/changes",
+            headers=headers,
+        )
+        if changes_resp.status_code == 200 and changes_resp.json():
+            return changes_resp.json()[-1]["id"]
+        return None
+    return _create
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Auth headers factory (register-via-API, dynamic users)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def auth_headers(client: TestClient, db_session: Session):
+    """Factory: create active user via API and return Bearer headers.
+
+    Uses create_user + create_token directly to avoid pending user issues.
+    This ensures the user is active and can login immediately.
+
+    Usage::
+
+        headers = auth_headers(username="alice", email="alice@test.com")
+    """
+    def _auth(
+        username: str | None = None,
+        email: str | None = None,
+        password: str = "password123",
+    ) -> dict[str, str]:
+        uid = uuid.uuid4().hex[:8]
+        # Create active user directly in DB
+        user = User(
+            username=username or f"auth_{uid}",
+            email=email or f"auth_{uid}@test.com",
+            phone_area_code="0341",
+            phone_number="1234567",
+            password_hash=_hash(password),
+            role="user",
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+        # Generate token
+        from app.auth import create_token
+        token = create_token(user.id)
+        return {"Authorization": f"Bearer {token}"}
+    return _auth
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Bootstrap admin helper (idempotent, rate-limit tolerant)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def bootstrap_admin_once(client: TestClient, db_session: Session):
+    """Ensure exactly one admin exists. Returns admin Bearer headers.
+
+    Idempotent: works whether admin already exists or not.
+    Handles rate limiting (429) gracefully by falling back to login.
+    """
+    admin_email = "admin@test.com"
+    admin_username = "adminuser"
+
+    # Clean up any existing user with same email/username first
+    db_session.query(User).filter(
+        (User.email == admin_email) | (User.username == admin_username)
+    ).delete()
+    db_session.commit()
+
+    # Try to bootstrap
+    captcha = solve_captcha(client)
+    resp = client.post("/api/auth/bootstrap-admin", json={
+        "username": admin_username,
+        "email": admin_email,
+        "phone_area_code": "0341",
+        "phone_number": "1111111",
+        "password": "adminpass123",
+        "captcha_challenge_id": captcha["challenge_id"],
+        "captcha_answer": captcha["answer"],
+    })
+
+    if resp.status_code == 201:
+        token = resp.json()["token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    # 429 (rate limited) or 403 (already exists) — try login
+    if resp.status_code in [429, 403]:
+        login_resp = login_user(client, admin_username, "adminpass123")
+        if "token" in login_resp:
+            return {"Authorization": f"Bearer {login_resp['token']}"}
+
+    raise AssertionError(f"Bootstrap admin failed: {resp.text}")

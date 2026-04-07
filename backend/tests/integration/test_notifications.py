@@ -70,3 +70,12 @@ class TestNotificationList:
         n = create_notification(user_id=owner.id)
         r = client.put(f"/api/notifications/{n.id}/read", headers=_bearer(other))
         assert r.status_code == 404
+
+
+class TestNotificationsAdvanced:
+    """Additional notification coverage — merged from tests_ant."""
+
+    def test_notifications_requires_auth(self, client):
+        """GET /api/notifications without auth should return 401."""
+        resp = client.get("/api/notifications")
+        assert resp.status_code == 401
