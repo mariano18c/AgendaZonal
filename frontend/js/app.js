@@ -16,7 +16,7 @@ async function updateNavbar() {
         <a href="/admin/reviews" class="text-gray-600 hover:text-gray-800">⭐ Reseñas</a>
         <a href="/admin/reports" class="text-gray-600 hover:text-gray-800">🚩 Reportes</a>
         <a href="/admin/analytics" class="text-gray-600 hover:text-gray-800">📊 Analytics</a>
-        <a href="/admin/utilities" class="text-gray-600 hover:text-gray-800">🏥 Utilidades</a>
+        <a href="/admin/utilities" class="text-gray-600 hover:text-gray-800">🏥 Teléfonos</a>
         ${user.role === 'admin' ? `<a href="/admin/users" class="text-gray-600 hover:text-gray-800">👥 Usuarios</a>` : ''}
       `;
     } else {

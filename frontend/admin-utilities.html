@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Utilidades - Admin - Agenda de la zona</title>
+  <title>Teléfonos útiles - Admin - Agenda de la zona</title>
   <link rel="stylesheet" href="/css/output.css">
   <link rel="manifest" href="/manifest.json">
   <script src="/js/api.js"></script>
@@ -19,8 +19,8 @@
   <main class="max-w-6xl mx-auto px-4 py-8">
     <div id="breadcrumbs"></div>
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">🏥 Utilidades del Barrio</h1>
-      <button id="addUtilityBtn" onclick="openUtilityModal('create')" class="hidden bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm font-medium">+ Agregar Utilidad</button>
+      <h1 class="text-2xl font-bold text-gray-800">🏥 Teléfonos útiles</h1>
+      <button id="addUtilityBtn" onclick="openUtilityModal('create')" class="hidden bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm font-medium">+ Agregar</button>
     </div>
     <div id="utilitiesContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
   </main>
@@ -28,7 +28,7 @@
   <!-- Modal Create/Edit -->
   <div id="utilityModal" class="hidden fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-      <h3 id="utilityModalTitle" class="text-lg font-semibold text-gray-800 mb-4">Agregar Utilidad</h3>
+      <h3 id="utilityModalTitle" class="text-lg font-semibold text-gray-800 mb-4">Agregar</h3>
       <form id="utilityForm" onsubmit="handleUtilitySubmit(event)">
         <input type="hidden" id="utilityId">
         <div class="mb-3">
@@ -129,7 +129,7 @@
       errorEl.textContent = '';
 
       if (mode === 'edit' && itemId) {
-        title.textContent = 'Editar Utilidad';
+        title.textContent = 'Editar';
         const item = _utilitiesData.find(u => u.id === itemId);
         if (!item) return;
         document.getElementById('utilityId').value = item.id;
@@ -140,7 +140,7 @@
         document.getElementById('utilitySchedule').value = item.schedule || '';
         document.getElementById('utilityCity').value = item.city || '';
       } else {
-        title.textContent = 'Agregar Utilidad';
+        title.textContent = 'Agregar';
       }
 
       modal.classList.remove('hidden');
@@ -215,7 +215,7 @@
     loadUtilities();
   </script>
     <script>
-      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Admin', 'url': null}, {'label': 'Utilidades', 'url': null}]);
+      document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([{'label': 'Inicio', 'url': '/'}, {'label': 'Admin', 'url': null}, {'label': 'Teléfonos útiles', 'url': null}]);
     </script>
   </body>
 </html>
