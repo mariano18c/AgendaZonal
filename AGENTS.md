@@ -1,4 +1,4 @@
-# Agent Configuration - Agenda Comunitaria (Gentle AI)
+# Agent Configuration - Agenda de la zona (Gentle AI)
 
 ## Gentle AI Stack
 - **Agent ID**: `antigravity`
@@ -7,7 +7,7 @@
 - **Config**: `.gga` (Guardian Angel) -> Migrated to `gentle-ai` binary ecosystem
 
 ## Proyecto
-- **Nombre**: Agenda Comunitaria
+- **Nombre**: Agenda de la zona
 - **Tipo**: Sistema web completo (FastAPI + SQLite + Tailwind CSS)
 - **Stack**: FastAPI (Python), SQLite, HTML + Tailwind CSS + Vanilla JS
 - **Plataforma**: Raspberry Pi 5 (4GB RAM)
@@ -189,3 +189,14 @@ Luego abrir: **http://localhost:8000**
 ## Configuración Regional
 - **Idioma**: Español (Español Rioplatense)
 - **Zona horaria**: America/Argentina/Buenos_Aires
+
+## Further Documentation
+
+Para documentación detallada de configuración, convenciones y diseño, ver:
+
+| Archivo | Descripción |
+|---------|-------------|
+| [`.agent/README.md`](.agent/README.md) | Guía de inicio, stack, commands frecuentes |
+| [`.agent/CONVENTIONS.md`](.agent/CONVENTIONS.md) | Convenciones de código Python y JavaScript |
+| [`.agent/DESIGN.md`](.agent/DESIGN.md) | Sistema de diseño, paleta de colores, componentes |
+| [`.agent/SKILL.md`](.agent/SKILL.md) | FAQs técnicas, patrones de implementación |
