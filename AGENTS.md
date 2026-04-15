@@ -191,7 +191,6 @@ Luego abrir: **http://localhost:8000**
 - **Zona horaria**: America/Argentina/Buenos_Aires
 
 ## Further Documentation
-
 Para documentación detallada de configuración, convenciones y diseño, ver:
 
 | Archivo | Descripción |
@@ -200,3 +199,20 @@ Para documentación detallada de configuración, convenciones y diseño, ver:
 | [`.agent/CONVENTIONS.md`](.agent/CONVENTIONS.md) | Convenciones de código Python y JavaScript |
 | [`.agent/DESIGN.md`](.agent/DESIGN.md) | Sistema de diseño, paleta de colores, componentes |
 | [`.agent/SKILL.md`](.agent/SKILL.md) | FAQs técnicas, patrones de implementación |
+
+#### Decisiones Arquitecturales Clave
+Resumen de las decisiones técnicas más importantes tomadas durante el desarrollo del proyecto, incluyendo tradeoffs considerados y razones detrás de cada elección.
+
+#### Próximos Pasos Recomendados
+Basado en el análisis de expertos, recomendaciones para futuras evoluciones del proyecto, incluyendo:
+- Oportunidades de integración de IA identificadas
+- Mejoras de experiencia de usuario
+- Escalabilidad y rendimiento
+- Seguridad y monitoreo
+
+#### Límites de Escalabilidad Conocidos
+Documentación de los límites actuales del sistema y cuándo considerar migraciones tecnológicas:
+- Límite de conexiones concurrentes de SQLite
+- Consideraciones para migrar a PostgreSQL/MySQL
+- Estrategias de caching para mejorar rendimiento
+- Consideraciones de despliegue en múltiples instancias
