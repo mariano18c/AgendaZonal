@@ -622,3 +622,323 @@ function showToast(options = {}) {
     }
   }, duration);
 }
+
+// ============================================
+// Lazy Loading Utility (SDD: performance)
+// ============================================
+
+/**
+ * LazyLoadingUtility - Manages lazy loading of images, maps, and scripts
+ * Uses IntersectionObserver for efficient lazy loading
+ */
+class LazyLoadingUtility {
+  constructor() {
+    this.imageObserver = null;
+    this.mapObserver = null;
+    this.leafletLoaded = false;
+    this.leafletLoading = false;
+    this.leafletPromise = null;
+    this.loadedImages = new WeakSet();
+  }
+
+  /**
+   * Initialize all lazy loading observers
+   */
+  init() {
+    // Initialize image observer
+    if ('IntersectionObserver' in window) {
+      this.imageObserver = new IntersectionObserver(
+        (entries) => this._handleImageIntersection(entries),
+        { rootMargin: '50px', threshold: 0.01 }
+      );
+    }
+
+    // Initialize map observer
+    if ('IntersectionObserver' in window) {
+      this.mapObserver = new IntersectionObserver(
+        (entries) => this._handleMapIntersection(entries),
+        { rootMargin: '0px', threshold: 0.1 }
+      );
+    }
+
+    // Observe existing lazy images
+    this._observeExistingImages();
+
+    // Observe existing lazy maps
+    this._observeExistingMaps();
+
+    console.log('LazyLoadingUtility initialized');
+  }
+
+  /**
+   * Register an image element for lazy loading
+   * @param {HTMLElement} img - Image element with data-src attribute
+   */
+  observeImage(img) {
+    if (!img || !img.dataset.src || this.loadedImages.has(img)) return;
+
+    if (this.imageObserver) {
+      this.imageObserver.observe(img);
+    } else {
+      // Fallback: load immediately if no observer
+      this._loadImage(img);
+    }
+  }
+
+  /**
+   * Register a map container for lazy loading
+   * @param {string} containerId - ID of the map container element
+   * @param {Object} options - {lat, lng, zoom, onReady callback}
+   */
+  observeMap(containerId, options = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Store options for later use
+    container.dataset.mapOptions = JSON.stringify(options);
+
+    if (this.mapObserver) {
+      this.mapObserver.observe(container);
+    } else {
+      // Fallback: load immediately if no observer
+      this.loadLeaflet().then(() => this._initMap(container, options));
+    }
+  }
+
+  /**
+   * Load Leaflet scripts and CSS on demand
+   * @returns {Promise} Resolves when Leaflet is ready
+   */
+  async loadLeaflet() {
+    if (this.leafletLoaded) {
+      return this.leafletPromise;
+    }
+
+    if (this.leafletLoading) {
+      return this.leafletPromise;
+    }
+
+    this.leafletLoading = true;
+
+    this.leafletPromise = new Promise(async (resolve, reject) => {
+      try {
+        // Check network condition
+        const conn = navigator.connection;
+        const isSlow = conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g');
+
+        if (isSlow) {
+          console.log('LazyLoadingUtility: Skipping lazy load on slow network');
+          reject(new Error('Slow network detected'));
+          return;
+        }
+
+        // Load Leaflet CSS
+        const cssLink = document.createElement('link');
+        cssLink.rel = 'stylesheet';
+        cssLink.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(cssLink);
+
+        // Load MarkerCluster CSS
+        const mcCssLink = document.createElement('link');
+        mcCssLink.rel = 'stylesheet';
+        mcCssLink.href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css';
+        document.head.appendChild(mcCssLink);
+        
+        // Load MarkerCluster Default CSS
+        const mcDefaultCssLink = document.createElement('link');
+        mcDefaultCssLink.rel = 'stylesheet';
+        mcDefaultCssLink.href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css';
+        document.head.appendChild(mcDefaultCssLink);
+
+        // Load Leaflet JS
+        const jsScript = document.createElement('script');
+        jsScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        document.head.appendChild(jsScript);
+
+        // Wait for script to load
+        await new Promise((res, rej) => {
+          jsScript.onload = res;
+          jsScript.onerror = () => rej(new Error('Failed to load Leaflet'));
+        });
+
+        // Load MarkerCluster JS
+        const mcScript = document.createElement('script');
+        mcScript.src = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js';
+        document.head.appendChild(mcScript);
+
+        await new Promise((res, rej) => {
+          mcScript.onload = res;
+          mcScript.onerror = () => rej(new Error('Failed to load MarkerCluster'));
+        });
+
+        this.leafletLoaded = true;
+        this.leafletLoading = false;
+
+        // Analytics tracking
+        this._sendPerformanceEvent('lazy-map-loaded');
+
+        console.log('LazyLoadingUtility: Leaflet loaded successfully');
+        resolve(window.L);
+      } catch (err) {
+        this.leafletLoading = false;
+        console.error('LazyLoadingUtility: Failed to load Leaflet:', err);
+        reject(err);
+      }
+    });
+
+    return this.leafletPromise;
+  }
+
+  /**
+   * Cleanup all observers on page navigation
+   */
+  destroy() {
+    if (this.imageObserver) {
+      this.imageObserver.disconnect();
+      this.imageObserver = null;
+    }
+
+    if (this.mapObserver) {
+      this.mapObserver.disconnect();
+      this.mapObserver = null;
+    }
+
+    this.loadedImages = new WeakSet();
+    console.log('LazyLoadingUtility destroyed');
+  }
+
+  // ============================================
+  // Private methods
+  // ============================================
+
+  _handleImageIntersection(entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        if (!this.loadedImages.has(img)) {
+          this._loadImage(img);
+        }
+        // Unobserve after triggering
+        if (this.imageObserver) {
+          this.imageObserver.unobserve(img);
+        }
+      }
+    });
+  }
+
+  _handleMapIntersection(entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const container = entry.target;
+        const options = JSON.parse(container.dataset.mapOptions || '{}');
+
+        // Check if it's a click-triggered map (has user interacted)
+        if (container.dataset.mapClicked === 'true') {
+          this._initMapFromClick(container, options);
+        }
+        // Unobserve after triggering
+        if (this.mapObserver) {
+          this.mapObserver.unobserve(container);
+        }
+      }
+    });
+  }
+
+  _loadImage(img) {
+    if (!img || !img.dataset.src) return;
+
+    this.loadedImages.add(img);
+    img.dataset.loading = 'true';
+
+    // Show loading state
+    img.classList.add('lazy-image', 'lazy-image--loading');
+
+    const tempImg = new Image();
+    tempImg.onload = () => {
+      img.src = img.dataset.src;
+      img.removeAttribute('data-src');
+      img.dataset.loaded = 'true';
+      img.classList.remove('lazy-image--loading');
+      img.classList.add('lazy-image--loaded');
+
+      // Blur-up transition
+      img.style.filter = 'blur(0)';
+      img.style.opacity = '1';
+
+      this._sendPerformanceEvent('lazy-image-loaded');
+    };
+
+    tempImg.onerror = () => {
+      img.classList.remove('lazy-image--loading');
+      img.classList.add('lazy-image--error');
+      console.warn('LazyLoadingUtility: Failed to load image:', img.dataset.src);
+    };
+
+    tempImg.src = img.dataset.src;
+  }
+
+  async _initMap(container, options = {}) {
+    try {
+      const L = await this.loadLeaflet();
+
+      const lat = options.lat || -32.862574;
+      const lng = options.lng || -60.759585;
+      const zoom = options.zoom || 12;
+
+      // Initialize map
+      const map = L.map(container.id).setView([lat, lng], zoom);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      container.dataset.mapInitialized = 'true';
+
+      // Callback if provided
+      if (options.onReady) {
+        options.onReady(map, L);
+      }
+
+      return map;
+    } catch (err) {
+      console.error('LazyLoadingUtility: Failed to init map:', err);
+    }
+  }
+
+  _initMapFromClick(container, options = {}) {
+    const lat = options.lat || -32.862574;
+    const lng = options.lng || -60.759585;
+
+    // Show "Loading map..." indicator
+    container.innerHTML = '<div class="map-loading">Cargando mapa...</div>';
+
+    this._initMap(container, options);
+  }
+
+  _sendPerformanceEvent(eventType) {
+    // Send to analytics if available
+    if (typeof window.trackPerformanceEvent === 'function') {
+      window.trackPerformanceEvent(eventType);
+    }
+
+    // Also dispatch custom event
+    const event = new CustomEvent('lazy-loading', { detail: { eventType } });
+    document.dispatchEvent(event);
+  }
+
+  _observeExistingImages() {
+    const images = document.querySelectorAll('[data-src]');
+    images.forEach(img => this.observeImage(img));
+  }
+
+  _observeExistingMaps() {
+    const maps = document.querySelectorAll('[data-lazy-map]');
+    maps.forEach(container => {
+      const options = JSON.parse(container.dataset.mapOptions || '{}');
+      this.observeMap(container.id, options);
+    });
+  }
+}
+
+// Create global instance
+window.LazyLoadingUtility = new LazyLoadingUtility();

@@ -88,6 +88,13 @@
   </main>
 
   <script>
+    // Initialize lazy loading after DOM loads
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.LazyLoadingUtility) {
+        window.LazyLoadingUtility.init();
+      }
+    });
+
     function getCategoryEmoji(code) {
       const emojis = {
         100: '🔧', 101: '🔥', 102: '⚡', 103: '✂️', 104: '🧱',
@@ -851,8 +858,9 @@
               ${slides.map((p, i) => `
                 <div class="carousel-slide" role="group" aria-label="Foto ${i + 1} de ${slides.length}">
                   <img src="${escapeHtml(p.photo_path)}" alt="${escapeHtml(p.caption || '')}"
-                       loading="${i === 0 ? 'eager' : 'lazy'}"
-                       class="cursor-pointer" onclick="openLightbox(${i})">
+                        ${i === 0 ? '' : `data-src="${escapeHtml(p.photo_path)}"`}
+                        loading="${i === 0 ? 'eager' : 'lazy'}"
+                        class="cursor-pointer ${i === 0 ? '' : 'lazy-image'}" onclick="openLightbox(${i})">
                 </div>
               `).join('')}
             </div>

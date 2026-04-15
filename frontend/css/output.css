@@ -1651,3 +1651,43 @@ video {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out forwards;
 }
+
+/* Lazy Loading Image Styles */
+.lazy-image {
+  transition: opacity 300ms ease-out, filter 300ms ease-out;
+  opacity: 0;
+  filter: blur(10px);
+}
+
+.lazy-image--loading {
+  opacity: 0.5;
+}
+
+.lazy-image--loaded {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.lazy-image--error {
+  opacity: 1;
+  filter: none;
+}
+
+/* Map placeholder */
+.map-placeholder {
+  background: #f0f0f0;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+}
+
+.map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: #666;
+  font-size: 1rem;
+}
