@@ -40,7 +40,7 @@
 
 
     <div id="categoriesGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      <div class="text-center text-gray-500 col-span-full">Cargando categorías...</div>
+      ${renderSkeleton({type: 'card', count: 12})}
     </div>
 
     <!-- Sección de Últimos registros temporalmente oculta -->
@@ -59,7 +59,7 @@
         <a href="/admin/utilities" class="text-blue-600 hover:underline text-sm">Ver todas →</a>
       </div>
       <div id="utilitiesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div class="text-center text-gray-500 col-span-full">Cargando utilidades...</div>
+        ${renderSkeleton({type: 'list', count: 3})}
       </div>
     </div>
   </main>
@@ -94,8 +94,13 @@
           </a>
         `).join('');
       } catch (err) {
-        document.getElementById('categoriesGrid').innerHTML =
-          '<div class="text-red-500 col-span-full">Error al cargar categorías</div>';
+        document.getElementById('categoriesGrid').innerHTML = 
+          renderEmptyState({
+            emoji: '⚠️',
+            title: 'Error al cargar',
+            subtitle: 'No se pudieron cargar las categorías',
+            cta: { label: 'Reintentar', onClick: () => loadCategories() }
+          });
       }
     }
 
@@ -139,7 +144,11 @@
       try {
         const data = await apiRequest('/api/utilities');
         if (!data || data.length === 0) {
-          grid.innerHTML = '<div class="text-gray-500 col-span-full">No hay utilidades registradas</div>';
+          grid.innerHTML = renderEmptyState({
+            emoji: '📋',
+            title: 'Sin utilidades',
+            subtitle: 'No hay teléfonos útiles registrados'
+          });
           return;
         }
         const typeLabels = { farmacia_turno: '💊', emergencia: '🚨', otro: '📋' };

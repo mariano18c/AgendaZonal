@@ -19,7 +19,7 @@
   <main class="max-w-6xl mx-auto px-4 py-8">
     <div id="breadcrumbs"></div>
     <h1 class="text-2xl font-bold text-gray-800 mb-6">📊 Mi Dashboard</h1>
-    <div id="dashboardContainer"><div class="text-center py-10 text-gray-500">Cargando...</div></div>
+    <div id="dashboardContainer">${renderSkeleton({type: 'detail'})}</div>
     <div id="pagination" class="mt-4"></div>
   </main>
 
@@ -177,17 +177,18 @@
         renderPagination('pagination', page, total_contacts, itemsPerPage, (p) => loadDashboard(p));
       } catch (err) {
         if (err.message.includes('No tienes contactos')) {
-          container.innerHTML = `
-            <div class="bg-white rounded-lg shadow-sm border p-10 text-center">
-              <div class="text-5xl mb-4">📋</div>
-              <h2 class="text-xl font-semibold text-gray-700 mb-2">Aún no tenés contactos</h2>
-              <p class="text-gray-500 mb-6">Empezá agregando tu primer contacto para verlo reflejado acá.</p>
-              <a href="/contact-form?mode=add" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium">
-                ➕ Agregar contacto
-              </a>
-            </div>`;
+          container.innerHTML = renderEmptyState({
+            emoji: '📋',
+            title: 'Aún no tenés contactos',
+            subtitle: 'Empezá agregando tu primer contacto para verlo reflejado acá.',
+            cta: { label: 'Agregar contacto', onClick: () => window.location.href = '/contact-form?mode=add' }
+          });
         } else {
-          container.innerHTML = `<div class="text-red-500 text-center py-10">Error: ${escapeHtml(err.message)}</div>`;
+          container.innerHTML = renderEmptyState({
+            emoji: '⚠️',
+            title: 'Error al cargar',
+            subtitle: err.message
+          });
         }
       }
     }
@@ -226,7 +227,11 @@
         _offersCache[contactId] = offers;
         
         if (offers.length === 0) {
-          listEl.innerHTML = '<p class="text-gray-500 text-sm">No hay ofertas activas. Agregá una abajo.</p>';
+          listEl.innerHTML = renderEmptyState({
+            emoji: '🏷️',
+            title: 'Sin ofertas',
+            subtitle: 'No hay ofertas activas'
+          });
           return;
         }
         

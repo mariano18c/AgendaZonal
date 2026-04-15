@@ -416,3 +416,209 @@ function renderPagination(containerId, currentPage, totalItems, itemsPerPage, on
   html += `</div>`;
   container.innerHTML = html;
 }
+
+// ============================================
+// UI Component Library (SDD: ui-ux-improvements)
+// ============================================
+
+/**
+ * Render skeleton loading placeholder with pulse animation
+ * @param {Object} options - Component options
+ * @param {string} options.type - 'card', 'list', or 'detail'
+ * @param {number} options.count - Number of skeleton items (default: 1)
+ * @returns {string} HTML string
+ */
+function renderSkeleton(options = {}) {
+  const { type = 'card', count = 1 } = options;
+  
+  let items = '';
+  for (let i = 0; i < count; i++) {
+    if (type === 'card') {
+      items += `
+        <div class="skeleton-card skeleton-overlay">
+          <div class="skeleton skeleton-title mb-2"></div>
+          <div class="skeleton skeleton-text mb-1"></div>
+          <div class="skeleton skeleton-text w-3/4"></div>
+        </div>
+      `;
+    } else if (type === 'list') {
+      items += `
+        <div class="flex items-center gap-3 p-3 skeleton-overlay">
+          <div class="skeleton skeleton-avatar"></div>
+          <div class="flex-1">
+            <div class="skeleton skeleton-title mb-1"></div>
+            <div class="skeleton skeleton-text w-1/2"></div>
+          </div>
+        </div>
+      `;
+    } else if (type === 'detail') {
+      items += `
+        <div class="skeleton-card skeleton-overlay space-y-3">
+          <div class="skeleton skeleton-title w-1/2"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text"></div>
+          <div class="skeleton skeleton-text w-3/4"></div>
+          <div class="flex gap-2">
+            <div class="skeleton w-20 h-8 rounded"></div>
+            <div class="skeleton w-20 h-8 rounded"></div>
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  return `<div class="skeleton-container space-y-4">${items}</div>`;
+}
+
+/**
+ * Render empty state with emoji, title, subtitle, and optional CTA
+ * @param {Object} options - Component options
+ * @param {string} options.emoji - Emoji to display
+ * @param {string} options.title - Main title
+ * @param {string} options.subtitle - Subtitle/description
+ * @param {Object} options.cta - Optional CTA button: {label, onClick}
+ * @returns {string} HTML string
+ */
+function renderEmptyState(options = {}) {
+  const { emoji = '📭', title = 'Sin contenido', subtitle = '', cta = null } = options;
+  
+  let ctaHtml = '';
+  if (cta && cta.label) {
+    const clickHandler = typeof cta.onClick === 'function' 
+      ? `onclick="(${cta.onClick.toString()})()"` 
+      : '';
+    ctaHtml = `<button ${clickHandler} class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">${cta.label}</button>`;
+  }
+  
+  return `
+    <div class="text-center py-12">
+      <div class="text-5xl mb-4">${emoji}</div>
+      <h3 class="text-xl font-semibold text-gray-700 mb-2">${title}</h3>
+      ${subtitle ? `<p class="text-gray-500 mb-4">${subtitle}</p>` : ''}
+      ${ctaHtml}
+    </div>
+  `;
+}
+
+/**
+ * Render reusable card component
+ * @param {Object} options - Component options
+ * @param {string} options.title - Card title
+ * @param {string} options.content - Card content (truncated at 200 chars)
+ * @param {Array} options.actions - Array of actions: [{label, onClick}]
+ * @returns {string} HTML string
+ */
+function renderCard(options = {}) {
+  const { title = '', content = '', actions = [] } = options;
+  
+  // Truncate content at 200 characters
+  let displayContent = content;
+  let showVerMas = false;
+  if (content.length > 200) {
+    displayContent = content.substring(0, 200) + '...';
+    showVerMas = true;
+  }
+  
+  let actionsHtml = '';
+  if (actions && actions.length > 0) {
+    actionsHtml = '<div class="flex flex-wrap gap-2 mt-3">';
+    actions.forEach(action => {
+      if (action && action.label) {
+        const clickHandler = typeof action.onClick === 'function'
+          ? `onclick="(${action.onClick.toString()})()"`
+          : action.onClick || '';
+        actionsHtml += `<button ${clickHandler} class="text-sm px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition">${action.label}</button>`;
+      }
+    });
+    actionsHtml += '</div>';
+  }
+  
+  return `
+    <div class="bg-white rounded-lg shadow p-4 border border-gray-100">
+      ${title ? `<h4 class="font-semibold text-gray-800 mb-2">${title}</h4>` : ''}
+      <p class="text-gray-600">${displayContent}</p>
+      ${showVerMas ? '<a href="#" class="text-blue-600 hover:text-blue-800 text-sm">Ver más</a>' : ''}
+      ${actionsHtml}
+    </div>
+  `;
+}
+
+/**
+ * Render standardized badge with variants
+ * @param {Object} options - Component options
+ * @param {string} options.text - Badge text
+ * @param {string} options.variant - 'success', 'warning', 'error', or 'info'
+ * @returns {string} HTML string
+ */
+function renderBadge(options = {}) {
+  const { text = '', variant = 'info' } = options;
+  
+  // Map variant to CSS class, fallback to 'info' for unsupported
+  const variantClass = (() => {
+    switch (variant) {
+      case 'success': return 'badge-success';
+      case 'warning': return 'badge-warning';
+      case 'error': return 'badge-error';
+      default:
+        if (variant !== 'info') {
+          console.warn(`renderBadge: unsupported variant "${variant}", falling back to "info"`);
+        }
+        return 'badge-info';
+    }
+  })();
+  
+  return `<span class="badge ${variantClass}">${text}</span>`;
+}
+
+/**
+ * Show toast notification (imperative - renders to DOM immediately)
+ * @param {Object} options - Component options
+ * @param {string} options.message - Toast message
+ * @param {string} options.type - 'success', 'error', 'warning', or 'info'
+ * @param {number} options.duration - Auto-dismiss duration in ms (default: 3000)
+ */
+function showToast(options = {}) {
+  const { message = '', type = 'info', duration = 3000 } = options;
+  
+  // Get container or create one
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2';
+    document.body.appendChild(container);
+  }
+  
+  // Type to color mapping
+  const typeClasses = {
+    success: 'bg-green-500 text-white',
+    error: 'bg-red-500 text-white',
+    warning: 'bg-yellow-500 text-white',
+    info: 'bg-blue-500 text-white'
+  };
+  
+  // Mobile detection for full-width styling
+  const isMobile = window.innerWidth < 640;
+  const widthClass = isMobile ? 'w-full left-0 right-0 top-0' : '';
+  const baseClass = isMobile 
+    ? `px-4 py-3 rounded-none shadow-lg ${typeClasses[type] || typeClasses.info}`
+    : `px-6 py-3 rounded-lg shadow-lg ${typeClasses[type] || typeClasses.info}`;
+  
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `${baseClass} ${widthClass} flex items-center justify-between gap-3 min-w-[280px] animate-fade-in`;
+  
+  toast.innerHTML = `
+    <span class="flex-1">${message}</span>
+    <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200 font-bold text-lg leading-none">&times;</button>
+  `;
+  
+  container.appendChild(toast);
+  
+  // Auto-dismiss timer
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.remove();
+    }
+  }, duration);
+}

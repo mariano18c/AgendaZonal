@@ -86,10 +86,12 @@
 
     <div id="resultsInfo" class="mb-4 text-gray-600"></div>
     <div id="contactDetail" class="hidden mb-8"></div>
-    <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${renderSkeleton({type: 'card', count: 6})}
+    </div>
     <div id="pagination" class="mt-4"></div>
-    <div id="noResults" class="hidden text-center text-gray-500 py-10">
-      No se encontraron resultados
+    <div id="noResults" class="hidden">
+      ${renderEmptyState({emoji: '🔍', title: 'Sin resultados', subtitle: 'No se encontraron contactos con esos criterios', cta: {label: 'Ver todas las categorías', onClick: () => window.location.href = '/search'}})}
     </div>
   </main>
 
@@ -278,43 +280,57 @@
     let currentSearchType = null;
     let currentSearchParam = null;
 
-    async function searchByQuery(query, page = 1) {
+async function searchByQuery(query, page = 1) {
       currentPage = page;
       currentSearchType = 'query';
       currentSearchParam = query;
-      document.getElementById('resultsInfo').textContent = `Resultados para "${query}"`;
       const skip = (page - 1) * itemsPerPage;
+      
+      const grid = document.getElementById('contactsGrid');
+      grid.innerHTML = renderSkeleton({type: 'card', count: 6});
+      
       try {
         const data = await searchContacts(query, null, skip, itemsPerPage);
         const contacts = data.contacts || data;
         const total = data.total || contacts.length;
         renderContacts(contacts);
+        document.getElementById('resultsInfo').textContent = `"${query}" (${total} resultado${total !== 1 ? 's' : ''})`;
         renderPagination('pagination', page, total, itemsPerPage, (p) => searchByQuery(query, p));
       } catch (err) {
-        document.getElementById('contactsGrid').innerHTML =
-          `<div class="text-red-500 col-span-full">Error: ${err.message}</div>`;
+        grid.innerHTML = renderEmptyState({
+          emoji: '⚠️',
+          title: 'Error en la búsqueda',
+          subtitle: err.message,
+          cta: { label: 'Reintentar', onClick: () => searchByQuery(query) }
+        });
       }
     }
 
-    async function searchByCategory(categoryId, page = 1) {
+async function searchByCategory(categoryId, page = 1) {
       currentPage = page;
       currentSearchType = 'category';
       currentSearchParam = categoryId;
       const skip = (page - 1) * itemsPerPage;
+      
+      const grid = document.getElementById('contactsGrid');
+      grid.innerHTML = renderSkeleton({type: 'card', count: 6});
+      
       try {
-        const categories = await getCategories();
-        const category = categories.find(c => c.id === parseInt(categoryId));
-        if (category) {
-          document.getElementById('resultsInfo').textContent = `${getCategoryEmoji(category.code)} ${category.name}`;
-        }
-        const data = await searchContacts('', parseInt(categoryId), skip, itemsPerPage);
+        const data = await searchContacts(null, categoryId, skip, itemsPerPage);
         const contacts = data.contacts || data;
         const total = data.total || contacts.length;
         renderContacts(contacts);
+        const categories = await getCategories();
+        const cat = categories.find(c => c.id === parseInt(categoryId));
+        document.getElementById('resultsInfo').textContent = cat ? `${cat.name} (${total})` : `Resultados (${total})`;
         renderPagination('pagination', page, total, itemsPerPage, (p) => searchByCategory(categoryId, p));
       } catch (err) {
-        document.getElementById('contactsGrid').innerHTML =
-          `<div class="text-red-500 col-span-full">Error: ${escapeHtml(err.message)}</div>`;
+        grid.innerHTML = renderEmptyState({
+          emoji: '⚠️',
+          title: 'Error en la búsqueda',
+          subtitle: err.message,
+          cta: { label: 'Reintentar', onClick: () => searchByCategory(categoryId) }
+        });
       }
     }
 
@@ -324,6 +340,10 @@
       currentSearchParam = null;
       document.getElementById('resultsInfo').textContent = 'Todos los contactos';
       const skip = (page - 1) * itemsPerPage;
+      
+      const grid = document.getElementById('contactsGrid');
+      grid.innerHTML = renderSkeleton({type: 'card', count: 6});
+      
       try {
         const data = await getContacts(skip, itemsPerPage);
         const contacts = data.contacts || data;
@@ -331,8 +351,12 @@
         renderContacts(contacts);
         renderPagination('pagination', page, total, itemsPerPage, (p) => loadAllContacts(p));
       } catch (err) {
-        document.getElementById('contactsGrid').innerHTML =
-          `<div class="text-red-500 col-span-full">Error: ${err.message}</div>`;
+        grid.innerHTML = renderEmptyState({
+          emoji: '⚠️',
+          title: 'Error al cargar',
+          subtitle: err.message,
+          cta: { label: 'Reintentar', onClick: () => loadAllContacts() }
+        });
       }
     }
 
@@ -380,15 +404,23 @@
         grid.innerHTML = contacts.map(c => {
           const cat = categories.find(cat => cat.id === c.category_id);
           const s = escapeHtml;
-          const verBadge = c.verification_level >= 3 ? '<span class="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">⭐</span>' :
-            c.verification_level >= 2 ? '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded">✓</span>' :
-            c.verification_level >= 1 ? '<span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">✓</span>' : '';
+          
+          // Use renderBadge component
+          let badgeHtml = '';
+          if (c.verification_level >= 3) {
+            badgeHtml = renderBadge({text: '⭐ Premium', variant: 'success'});
+          } else if (c.verification_level >= 2) {
+            badgeHtml = renderBadge({text: '✓ Documentado', variant: 'success'});
+          } else if (c.verification_level >= 1) {
+            badgeHtml = renderBadge({text: '✓ Verificado', variant: 'info'});
+          }
+          
           return `
             <a href="/profile?id=${c.id}"
                class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
               <div class="flex items-center gap-2">
                 <span class="font-semibold text-gray-800">${s(c.name)}</span>
-                ${verBadge}
+                ${badgeHtml}
               </div>
               <div class="text-blue-600 mt-1">📞 ${s(c.phone)}</div>
               ${cat ? `<div class="text-sm text-gray-500 mt-1">${getCategoryEmoji(cat.code)} ${s(cat.name)}</div>` : ''}
