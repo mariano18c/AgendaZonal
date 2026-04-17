@@ -37,7 +37,7 @@ Este proyecto sigue el flujo Spec-Driven Development.
 
 ### Backend ✅ Completado
 - FastAPI configurado con CORS
-- SQLite configurado (24 categorías predefinidas)
+- SQLite configurado (26 categorías predefinidas)
 - Autenticación JWT implementada
 - CRUD completo de contactos
 - Búsqueda por texto, categoría, teléfono y geolocalización
@@ -58,14 +58,13 @@ Este proyecto sigue el flujo Spec-Driven Development.
 - PWA instalable: manifest, Service Worker, icons, beforeinstallprompt
 - Service Worker: precache, stale-while-revalidate, push notifications
 
-### Páginas (17)
+### Páginas (16)
 | Página | Ruta | Descripción |
 |--------|------|-------------|
 | Landing | `/` | Página principal con categorías y utilidades |
 | Search | `/search` | Búsqueda por texto + mapa Leaflet con MarkerCluster |
 | Profile | `/profile` | Perfil proveedor con carrusel, reseñas, WhatsApp, ofertas |
-| Add | `/add` | Alta de contacto |
-| Edit | `/edit` | Edición de contacto |
+| Contact Form | `/contact-form.html` | Formulario unificado para alta y edición de contactos |
 | Login | `/login` | Inicio de sesión |
 | Register | `/register` | Registro con CAPTCHA |
 | Dashboard | `/dashboard` | Panel proveedor (leads, rating, offers) |
@@ -85,7 +84,6 @@ Este proyecto sigue el flujo Spec-Driven Development.
 | GET | `/` | Público | 001 |
 | GET | `/health` | Público | 001 |
 | GET | `/search` | Público | 001 |
-| GET | `/add` | Público | 001 |
 | GET | `/login` | Público | 001 |
 | GET | `/register` | Público | 001 |
 | GET | `/profile` | Público | 003 |
@@ -101,6 +99,7 @@ Este proyecto sigue el flujo Spec-Driven Development.
 | POST | `/api/contacts` | Auth | 002 |
 | PUT | `/api/contacts/{id}` | Auth | 002 |
 | DELETE | `/api/contacts/{id}` | Auth | 002 |
+| GET | `/api/contacts/export` | Admin | 002 |
 | GET | `/api/contacts/{id}/reviews` | Público | 003 |
 | POST | `/api/contacts/{id}/reviews` | Auth | 003 |
 | POST | `/api/contacts/{id}/leads` | Público | 003 |
@@ -120,7 +119,13 @@ Este proyecto sigue el flujo Spec-Driven Development.
 | GET | `/api/admin/analytics` | Mod | 003 |
 | GET | `/api/admin/analytics/export` | Mod | 003 |
 | CRUD | `/api/admin/utilities` | Mod | 003 |
+| GET | `/api/notifications/vapid-public-key` | Público | 003 |
 | POST | `/api/notifications/subscribe` | Auth | 003 |
+| POST | `/api/notifications/unsubscribe` | Auth | 003 |
+| GET | `/api/notifications/unread-count` | Auth | 003 |
+| GET | `/api/notifications` | Auth | 003 |
+| PUT | `/api/notifications/{id}/read` | Auth | 003 |
+| PUT | `/api/notifications/read-all` | Auth | 003 |
 | GET | `/api/provider/dashboard` | Auth | 003 |
 | GET | `/api/provider/contacts` | Auth | 003 |
 | CRUD | `/api/provider/offers` | Auth | 003 |
@@ -138,7 +143,7 @@ Este proyecto sigue el flujo Spec-Driven Development.
 | schedules | id, contact_id, day_of_week, open_time, close_time |
 | lead_events | id, contact_id, channel, referrer, created_at |
 | reports | id, contact_id, reporter_id, reason, status, resolved_by, resolved_at, created_at |
-| notifications | id, user_id, title, body, url, read, created_at |
+| notifications | id, user_id, type, message, contact_id, is_read, created_at |
 | push_subscriptions | id, user_id, endpoint, p256dh, auth, created_at |
 | utility_items | id, name, category, phone, address, description, active, created_at |
 
