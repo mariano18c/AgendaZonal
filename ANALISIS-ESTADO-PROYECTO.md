@@ -7,7 +7,7 @@
 
 ## 1. RESUMEN EJECUTIVO
 
-El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con SPEC-001 a SPEC-004 archivados. El core funcional (CRUD contactos, búsqueda geo, reseñas, ofertas, dashboard, PWA) está implementado y testeado. Sin embargo, existen **14 items pendientes**, **6 preocupaciones de seguridad/configuración**, y **0 issues abiertos en GitHub**.
+El proyecto AgendaZonal (Agenda zonal) está **mayormente completado** con SPEC-001 a SPEC-004 archivados. El core funcional (CRUD contactos, búsqueda geo, reseñas, ofertas, dashboard, PWA) está implementado y testeado. Sin embargo, existen **14 items pendientes**, **6 preocupaciones de seguridad/configuración**, y **0 issues abiertos en GitHub**.
 
 ---
 
@@ -127,22 +127,13 @@ El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con
 
 ## 3. ITEMS PENDIENTES / INCOMPLETOS 🔲
 
-### 3.1 Push Notifications — NO FUNCIONAL
+### 3.1 Funcionalidades recientemente implementadas y validadas ✅
 
-**Backend**: Código existe pero no configurado
-- Endpoints de subscribe/unsubscribe: ✅ implementados
-- `send_push_to_user()` helper: ✅ implementado
-- `send_push_to_all()` helper: ✅ implementado
-- VAPID keys en `.env`: ❌ No configuradas
-- `pywebpush` en `requirements.txt`: ❌ No incluido
-- `.env.example` con VAPID: ❌ No documentado
-
-**Frontend**: Código ausente
-- No hay JS para suscribirse a push notifications
-- No hay handler para recibir push events en Service Worker
-- No hay UI para activar/desactivar notificaciones push
-
-**Impacto**: Toda la infraestructura de push notifications está construida pero **completamente no funcional**.
+**Push Notifications — COMPLETAMENTE FUNCIONAL**
+- Endpoints de subscribe/unsubscribe: ✅ Implementados.
+- VAPID keys en `.env` y `pywebpush`: ✅ Completamente configurado.
+- Frontend JS y Service Worker: ✅ Implementado en `app.js` interactuando perfectamente con `sw.js`.
+- UI Navbar: ✅ Botón `#pwaPushBtn` ("🔔 Notificaciones") desplegado condicionalmente.
 
 ---
 
@@ -150,8 +141,6 @@ El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con
 
 | Endpoint | Documentado en | Estado |
 |----------|---------------|--------|
-| `GET /api/auth/me` | DOCUMENTACION-COMPLETA.md:287 | ❌ No existe |
-| `POST /api/auth/bootstrap-admin` | DOCUMENTACION-COMPLETA.md:288 | ❌ No existe |
 | `GET /api/notifications/unread-count` | DOCUMENTACION-COMPLETA.md:374 | ❌ No existe |
 | `GET /api/contacts/{id}/export` (vCard) | DOCUMENTACION-COMPLETA.md:310 | ❌ No existe |
 
@@ -162,18 +151,12 @@ El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con
 | Feature | Backend | Frontend |
 |---------|---------|----------|
 | Reportar contacto desde perfil | ✅ `POST /api/contacts/{id}/report` | ❌ Sin UI |
-| Admin: gestión de contactos flagged/suspended | ✅ `GET/PUT /api/admin/contacts` | ❌ Sin página |
-| Push notifications: suscripción UI | ✅ Endpoints existen | ❌ Sin UI |
-| `/api/auth/me` para mostrar usuario logueado | ❌ No existe | ❌ Sin UI |
+| Admin: gestión de contactos flagged/suspended | ✅ `GET/PUT /api/admin/contacts` | ❌ Sin UI unificada |
 
 ---
 
 ### 3.4 Dependencias Faltantes
-
-| Dependencia | Dónde se usa | Estado |
-|-------------|-------------|--------|
-| `pywebpush` | `routes/notifications.py` (import dinámico) | ❌ No en requirements.txt |
-| VAPID keys | `config.py`, push notifications | ❌ No en .env.example |
+*(Sección resuelta: Todas las dependencias críticas como `pywebpush` y VAPID keys ya fueron configuradas)*
 
 ---
 
@@ -184,7 +167,7 @@ El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con
 | `contact_photos` | 0 | Feature funciona, sin datos aún |
 | `utility_items` | 0 | CRUD funciona, sin datos aún |
 | `notifications` | 0 | Sistema funciona, sin datos aún |
-| `push_subscriptions` | 0 | No puede funcionar sin VAPID |
+| `push_subscriptions` | 0 | Sistema habilitado y listo para registrar |
 | `contact_changes` | 0 | Sistema funciona, sin datos aún |
 
 ---
@@ -202,12 +185,10 @@ El proyecto AgendaZonal (Agenda Comunitaria) está **mayormente completado** con
 
 | # | Problema | Severidad | Archivo | Detalle |
 |---|----------|-----------|---------|---------|
-| 1 | `pywebpush` no en requirements.txt | Media | `requirements.txt` | Push notifications fallan silenciosamente en install fresco |
-| 2 | VAPID keys no en `.env.example` | Media | `.env.example` | Nuevos devs no saben que deben generarlas |
-| 3 | `/api/auth/me` documentado pero no existe | Media | `routes/auth.py` | Frontend puede depender de este endpoint |
-| 4 | HSTS header deshabilitado | Baja | `main.py:44-45` | Comentado con nota "Enable in production" |
-| 5 | Export de contactos es público | Media | `routes/contacts.py:261` | 451 contactos exportables sin auth (data scraping) |
-| 6 | Categorías: docs dicen 24, DB tiene 26 | Baja | AGENTS.md vs DB | Se agregaron "Cuidado de personas" (#123) y "Alquiler" (#124) |
+| 1 | VAPID keys no en `.env.example` | Baja | `.env.example` | Las verdaderas llaves están en `.env`, pero falta un template |
+| 2 | HSTS header deshabilitado | Baja | `main.py:44-45` | Comentado con nota "Enable in production" |
+| 3 | Export de contactos es público | Media | `routes/contacts.py:261` | 451 contactos exportables sin auth (data scraping) |
+| 4 | Categorías: docs dicen 24, DB tiene 26 | Baja | AGENTS.md vs DB | Se agregaron "Cuidado de personas" (#123) y "Alquiler" (#124) |
 
 ---
 
@@ -434,8 +415,6 @@ frontend/
 
 | Método | Ruta | Documentado en |
 |--------|------|---------------|
-| GET | `/api/auth/me` | DOCUMENTACION-COMPLETA.md:287 |
-| POST | `/api/auth/bootstrap-admin` | DOCUMENTACION-COMPLETA.md:288 |
 | GET | `/api/notifications/unread-count` | DOCUMENTACION-COMPLETA.md:374 |
 | GET | `/api/contacts/{id}/export` | DOCUMENTACION-COMPLETA.md:310 |
 | GET | `/api/contacts/{id}/pending-changes` | DOCUMENTACION-COMPLETA.md:306 |
@@ -447,22 +426,18 @@ frontend/
 ## 9. PRIORIDADES RECOMENDADAS
 
 ### Alta Prioridad
-1. **Agregar `pywebpush` a requirements.txt** — 1 línea, habilita push notifications
-2. **Agregar VAPID keys a `.env.example`** — Documentación para nuevos devs
-3. **Implementar `GET /api/auth/me`** — Endpoint crítico para frontend
-4. **Frontend: UI para reportar contacto** — Feature de moderación crowdsourced
+1. **Frontend: UI para reportar contacto** — Feature de moderación crowdsourced
+2. **Revisar visibilidad de `/api/contacts/export`** — Proteger con auth o rate limit para no exponer la BD.
+3. **Agregar VAPID keys a `.env.example`** — Documentar llaves genéricas para nuevos desarrolladores.
 
 ### Media Prioridad
-5. **Implementar `GET /api/notifications/unread-count`** — Badge de notificaciones
-6. **Frontend: Admin page para contactos flagged/suspended** — Gestión de moderación
-7. **Habilitar HSTS en producción** — Seguridad HTTPS
-8. **Revisar visibilidad de `/api/contacts/export`** — Proteger con auth o rate limit
+4. **Implementar `GET /api/notifications/unread-count`** — Badge de notificaciones
+5. **Frontend: Admin page para contactos flagged/suspended** — Gestión unificada de moderación
+6. **Habilitar HSTS en producción** — Mejorar Seguridad HTTPS
 
 ### Baja Prioridad
-9. **Implementar `POST /api/auth/bootstrap-admin`** — Solo útil para primera instalación
-10. **Implementar vCard export** — Feature nice-to-have
-11. **Actualizar docs de categorías (24 → 26)** — Consistencia documentación
-12. **Push notifications frontend** — UI completa de suscripción y recepción
+7. **Implementar vCard export** `GET /api/contacts/{id}/export` — Feature nice-to-have
+8. **Actualizar docs de categorías (24 → 26)** — Consistencia con la DB real.
 
 ---
 

@@ -6,13 +6,22 @@ async function updateNavbar() {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (isLoggedIn && user) {
+    let unreadHtml = '';
+    try {
+      const data = await apiRequest('/api/notifications/unread-count');
+      if (data && data.unread_count > 0) {
+        unreadHtml = `<span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 translate-y-[-2px]">${data.unread_count}</span>`;
+      }
+    } catch(e) {
+      // Ignorar errores silenciosamente si expira el token
+    }
     let adminLink = '';
     
     // Admin/moderator links
     if (user.role === 'admin' || user.role === 'moderator') {
       adminLink = `
         <a href="/pending" class="text-yellow-600 hover:text-yellow-800">⏳ Pendientes</a>
-        <a href="/dashboard" class="text-gray-600 hover:text-gray-800">📊 Dashboard</a>
+        <a href="/dashboard" class="text-gray-600 hover:text-gray-800 flex items-center">📊 Dashboard${unreadHtml}</a>
         <a href="/admin/reviews" class="text-gray-600 hover:text-gray-800">⭐ Reseñas</a>
         <a href="/admin/reports" class="text-gray-600 hover:text-gray-800">🚩 Reportes</a>
         <a href="/admin/analytics" class="text-gray-600 hover:text-gray-800">📊 Analytics</a>
@@ -20,7 +29,7 @@ async function updateNavbar() {
         ${user.role === 'admin' ? `<a href="/admin/users" class="text-gray-600 hover:text-gray-800">👥 Usuarios</a>` : ''}
       `;
     } else {
-      adminLink = `<a href="/dashboard" class="text-gray-600 hover:text-gray-800">📊 Dashboard</a>`;
+      adminLink = `<a href="/dashboard" class="text-gray-600 hover:text-gray-800 flex items-center">📊 Dashboard${unreadHtml}</a>`;
     }
     
     const pushBtnHtml = ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied')

@@ -313,6 +313,19 @@ def send_push_to_roles(db: Session, roles: list[str], title: str, body: str, url
 # Existing notification endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/unread-count")
+def unread_count(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get the number of unread notifications for the current user."""
+    count = db.query(Notification).filter(
+        Notification.user_id == user.id,
+        Notification.is_read == False
+    ).count()
+    return {"unread_count": count}
+
+
 @router.get("")
 def list_notifications(
     db: Session = Depends(get_db),
