@@ -1,6 +1,36 @@
+function getThemePreference() {
+  const saved = localStorage.getItem('theme');
+  if (saved) return saved;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  if (theme === 'dark') {
+    html.classList.add('dark');
+  } else {
+    html.classList.remove('dark');
+  }
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.classList.contains('dark');
+  const newTheme = isDark ? 'light' : 'dark';
+  localStorage.setItem('theme', newTheme);
+  applyTheme(newTheme);
+}
+
+function initTheme() {
+  applyTheme(getThemePreference());
+}
+
 async function updateNavbar() {
   const navbar = document.getElementById('navbar');
   if (!navbar) return;
+
+  const isDark = document.documentElement.classList.contains('dark');
+  const themeToggle = `<button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="${isDark ? 'Modo claro' : 'Modo oscuro'}">${isDark ? '☀️' : '🌙'}</button>`;
 
   const isLoggedIn = !!localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -38,18 +68,20 @@ async function updateNavbar() {
 
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
-        <span class="text-gray-700">Hola, ${user.username}</span>
+        ${themeToggle}
+        <span class="text-gray-700 dark:text-gray-200">Hola, ${user.username}</span>
         <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
         ${adminLink}
         ${pushBtnHtml}
         <button id="pwaInstallBtn" class="hidden text-green-600 hover:text-green-800" title="Instalar app">📲 Instalar</button>
-        <button onclick="logout()" class="text-gray-600 hover:text-gray-800">Salir</button>
+        <button onclick="logout()" class="text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100">Salir</button>
       </div>
     `;
   } else {
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
-        <a href="/login" class="text-blue-600 hover:text-blue-800">Iniciar sesión</a>
+        ${themeToggle}
+        <a href="/login" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">Iniciar sesión</a>
         <a href="/register" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Registrarse</a>
       </div>
     `;
@@ -164,6 +196,7 @@ function formatDate(dateString) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   updateNavbar();
 
   // --- PWA: Register Service Worker ---

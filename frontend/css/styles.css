@@ -1,3 +1,58 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Dark Mode - CSS global */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  @apply bg-gray-900 text-gray-100;
+}
+
+html.dark .bg-gray-50 {
+  @apply bg-gray-900;
+}
+
+html.dark .bg-white {
+  @apply bg-gray-800;
+}
+
+html.dark .border {
+  @apply border-gray-700;
+}
+
+html.dark .border-b {
+  @apply border-gray-700;
+}
+
+html.dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  @apply bg-gray-800 border-gray-600 text-gray-100;
+}
+
+html.dark input::placeholder {
+  color: #9ca3af;
+}
+
+html.dark .text-gray-600 {
+  @apply text-gray-300;
+}
+
+html.dark .text-gray-700 {
+  @apply text-gray-200;
+}
+
+html.dark .text-gray-800 {
+  @apply text-gray-100;
+}
+
+html.dark .text-gray-500 {
+  color: #d1d5db;
+}
