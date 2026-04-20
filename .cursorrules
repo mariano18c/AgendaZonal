@@ -20,7 +20,7 @@ Antes de actuar, debes consultar el archivo relevante en `/docs`:
 1. **Context Loading**: Si la tarea es de Backend, lee `conventions.md` y `api-endpoints.md`. Si es de Frontend, lee `design-system.md`.
 2. **Performance First**: Prioriza `async` en Python y Vanilla JS modular. No uses CDN en producción; usa assets locales.
 3. **Security**: Siempre verifica permisos (roles) y aplica Rate Limiting en nuevos endpoints. JWT vía HttpOnly Cookies es el estándar.
-4. **Idioma**: Documentación interna y comentarios en **Inglés**. Interfaz de usuario y mensajes de error en **Español Rioplatense**.
+4. **Idioma**: Tecnicismos en **Inglés**. Documentación interna y comentarios en **Español neutro**. Interfaz de usuario y mensajes de error en **Español Rioplatense**.
 
 ## Workflow SDD
 Este proyecto sigue rigurosamente el **Spec-Driven Development**.
