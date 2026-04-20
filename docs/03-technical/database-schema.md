@@ -1,98 +1,140 @@
-# Database Schema: AgendaZonal
+# Database Schema: AgendaZonal (Complete)
 
-## Visión General
-El sistema utiliza **SQLite** (WAL mode) con un esquema relacional de 14 tablas. A continuación se detallan las tablas principales y sus campos técnicos.
+El sistema utiliza **SQLite** (WAL mode) con un esquema relacional optimizado para alto rendimiento en Raspberry Pi 5.
 
 ---
 
-### 1. Tablas Core
+## 1. Tablas de Identidad y Base
 
-#### 1.1 `users`
+### 1.1 `users`
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
 | username | VARCHAR(50) | UNIQUE |
 | email | VARCHAR(255) | UNIQUE |
-| phone_area_code | VARCHAR(5) | |
-| phone_number | VARCHAR(20) | |
 | password_hash | VARCHAR(255) | bcrypt |
 | role | VARCHAR(20) | admin, moderator, user |
 | is_active | BOOLEAN | Default True |
 | created_at | DATETIME | |
 
-#### 1.2 `contacts`
+### 1.2 `categories`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| code | INTEGER | UNIQUE, Código de rubro |
+| name | VARCHAR(100) | UNIQUE |
+| icon | VARCHAR(50) | Icono descriptivo |
+
+---
+
+## 2. Núcleo del Directorio
+
+### 2.1 `contacts`
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
 | name | VARCHAR(100) | |
 | slug | VARCHAR(200) | UNIQUE, URL Friendly |
-| user_id | INTEGER FK | Propietario |
-| category_id | INTEGER FK | |
+| user_id | INTEGER FK | Propietario (User) |
+| category_id | INTEGER FK | FK a `categories` |
 | phone | VARCHAR(20) | |
-| email | VARCHAR(255) | |
-| address | VARCHAR(255) | |
-| latitude | FLOAT | |
-| longitude | FLOAT | |
-| description | VARCHAR(500) | |
-| about | TEXT | Markdown support |
+| latitude / longitude | FLOAT | Ubicación Geo |
+| verification_level | INTEGER | 0=No verif, 1=Básico, 2=Premium, 3=Gold |
 | status | VARCHAR(20) | active, flagged, suspended |
-| verification_level| INTEGER | 0-3 |
-| avg_rating | FLOAT | Cacheado |
-| review_count | INTEGER | Cacheado |
-| instagram | VARCHAR(100) | |
-| facebook | VARCHAR(255) | |
-| created_at | DATETIME | |
+
+### 2.2 `contact_photos`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| contact_id | INTEGER FK | FK a `contacts` (ON DELETE CASCADE) |
+| photo_path | VARCHAR(500) | Ruta en el FileSystem |
+| caption | VARCHAR(200) | |
+| sort_order | INTEGER | Orden de visualización |
+
+### 2.3 `schedules`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| contact_id | INTEGER FK | FK a `contacts` |
+| day_of_week | INTEGER | 0 (Lunes) a 6 (Domingo) |
+| open_time / close_time | VARCHAR(5) | Formato "HH:MM" o NULL |
 
 ---
 
-### 2. Tablas de Interacción
+## 3. Interacción y Conversión
 
-#### 2.1 `reviews`
+### 3.1 `reviews`
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
 | contact_id | INTEGER FK | |
 | user_id | INTEGER FK | |
-| rating | INTEGER | 1-5 |
+| rating | INTEGER | 1 a 5 |
 | comment | TEXT | |
-| is_approved | BOOLEAN | Moderado |
-| reply_text | TEXT | Respuesta del owner |
+| is_approved | BOOLEAN | Control de moderación |
 
-#### 2.2 `offers` (Flash Offers)
+### 3.2 `offers` (Flash Offers)
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
 | contact_id | INTEGER FK | |
 | title | VARCHAR(200) | |
-| discount_pct | INTEGER | 1-99 |
+| discount_pct | INTEGER | |
 | expires_at | DATETIME | |
-| is_active | BOOLEAN | |
+
+### 3.3 `lead_events`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| contact_id | INTEGER FK | |
+| source | VARCHAR(20) | "whatsapp", "call", "web" |
+| created_at | DATETIME | |
 
 ---
 
-### 3. Utilidades y Operaciones
+## 4. Moderación y Calidad
 
-#### 3.1 `utility_items`
+### 4.1 `contact_changes` (Borradores)
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
-| type | VARCHAR(20) | farmacia, emergencia, etc. |
+| contact_id | INTEGER FK | |
+| field_name | VARCHAR(50) | Campo modificado |
+| old_value / new_value | TEXT | Cambio propuesto |
+| is_verified | BOOLEAN | Estado de la aprobación |
+
+### 4.2 `reports`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| contact_id | INTEGER FK | |
+| reason | VARCHAR(20) | spam, falso, inapropiado, cerrado |
+| is_resolved | BOOLEAN | |
+
+---
+
+## 5. Utilidades y Operaciones
+
+### 5.1 `utility_items` (Emergencias)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | INTEGER PK | |
+| type | VARCHAR(20) | farmacia_turno, emergencia, otro |
 | name | VARCHAR(200) | |
-| phone | VARCHAR(20) | |
-| is_active | BOOLEAN | |
+| is_priority | BOOLEAN | |
 
-#### 3.2 `notifications`
+### 5.2 `push_subscriptions`
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | INTEGER PK | |
-| user_id | INTEGER FK | |
-| type | VARCHAR(50) | push, in-app |
-| message | VARCHAR(500) | |
-| is_read | BOOLEAN | |
+| endpoint | VARCHAR(500) | Browsing service endpoint |
+| p256dh / auth | VARCHAR | VAPID Keys |
+| city | VARCHAR(100) | Zona geográfica focalizada |
 
 ---
 
 ## Índices Críticos
-- `idx_contacts_geo`: (latitude, longitude) para Bounding Box pre-filter.
-- `idx_contacts_slug`: Búsqueda rápida de perfiles.
-- `idx_reviews_contact_approved`: Para cargar rápidamente el feed de reseñas.
+- `idx_contacts_geo`: (latitude, longitude) - Bounding Box Pre-filter.
+- `idx_photos_contact_order`: (contact_id, sort_order) - Carga de galería.
+- `idx_leads_date`: (created_at) - Generación de estadísticas.
+- `idx_reports_unresolved`: (is_resolved) - Cola de moderación.

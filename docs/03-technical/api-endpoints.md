@@ -1,52 +1,57 @@
-# API Endpoints: AgendaZonal
+# API Endpoints Catalog: AgendaZonal
 
-## Autenticación (JWT HttpOnly Cookies)
+Todos los endpoints tienen el prefijo `/api` (ej: `https://agendazonal.ar/api/auth/login`).
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| POST | `/api/auth/register` | Public | Registro de usuario (Rate Limited) |
-| POST | `/api/auth/login` | Public | Login (Retorna HttpOnly Cookie) |
-| GET | `/api/auth/me` | User | Obtener perfil actual |
-| POST | `/api/auth/logout` | User | Limpiar cookies de sesión |
+---
 
-## Contactos & Búsqueda
+## 1. Autenticación (`/auth`)
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| GET | `/api/contacts` | Public | Listado paginado |
-| GET | `/api/contacts/search` | Public | Search (Text + Geo + Category) |
-| GET | `/api/contacts/{id}` | Public | Detalle de contacto |
-| POST | `/api/contacts` | Auth | Crear contacto (Requiere aprobación) |
-| PUT | `/api/contacts/{id}` | Owner | Actualizar datos |
-| DELETE | `/api/contacts/{id}` | Owner/Admin | Eliminación (Soft-delete) |
-| GET | `/api/contacts/{id}/related` | Public | Businesses en la misma zona/rubro |
+| Método | Endpoint | Permisos | Descripción |
+|--------|----------|----------|-------------|
+| POST | `/login` | Public | Inicia sesión y setea HttpOnly Cookie (JWT). |
+| POST | `/register` | Public | Registro de nuevos usuarios/proveedores. |
+| POST | `/logout` | Authenticated| Borra la cookie de sesión. |
+| GET | `/me` | Authenticated| Retorna perfil del usuario actual. |
 
-## Reviews & Moderación
+---
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| POST | `/api/contacts/{id}/reviews` | Auth | Crear reseña (1 por usuario/contacto) |
-| GET | `/api/contacts/{id}/reviews` | Public | Listado de reseñas aprobadas |
-| POST | `/api/reviews/{id}/reply` | Owner | Responder a una reseña |
-| PUT | `/api/admin/reviews/{id}/approve`| Mod+ | Moderar reseña |
+## 2. Directorio de Contactos (`/contacts`)
 
-## Flash Offers
+| Método | Endpoint | Permisos | Descripción |
+|--------|----------|----------|-------------|
+| GET | `/` | Public | Lista contactos paginados. |
+| GET | `/search` | Public | Búsqueda por texto, rubro y **Geolocalización**. |
+| GET | `/{id}` | Public | Detalle completo de un comercio. |
+| POST | `/` | User+ | Crea un nuevo contacto (asociado al usuario). |
+| PUT | `/{id}/edit` | Public* | Sugerir edición (buffer de moderación). |
+| POST | `/{id}/image`| Owner/Adm | Sube foto de perfil (JPEG, max 5MB). |
+| GET | `/export` | Adm/Mod | Exportación masiva (CSV/JSON). |
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| POST | `/api/contacts/{id}/offers` | Owner | Crear oferta flash |
-| GET | `/api/contacts/{id}/offers` | Public | Listado de ofertas activas |
+---
 
-## Admin & Analytics
+## 3. Interacción y PWA (`/notifications`, `/reviews`)
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| GET | `/api/admin/analytics` | Mod+ | Estadísticas de la zona |
-| GET | `/api/admin/analytics/export` | Admin | Exportar datos (CSV/JSON) |
-| CRUD | `/api/admin/utilities` | Mod+ | Gestión de farmacias de turno/emergencias |
+| Método | Endpoint | Permisos | Descripción |
+|--------|----------|----------|-------------|
+| POST | `/notifications/subscribe` | Authenticated | Registra suscripción Web Push (VAPID). |
+| GET | `/offers` | Public | Lista ofertas flash activas. |
+| POST | `/reviews` | Authenticated | Publica reseña (queda pendiente de moderación). |
+| GET | `/reviews/{id}` | Public | Lista reseñas aprobadas para un contacto. |
 
-## System Health
+---
 
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| GET | `/health` | Public | Check DB Status & Disk Space (RPi Monitor) |
+## 4. Administración y Moderación (`/admin`)
+
+| Método | Endpoint | Permisos | Descripción |
+|--------|----------|----------|-------------|
+| GET | `/admin/stats` | Admin | Dashboad de sistema (RAM, CPU, Usuarios). |
+| POST | `/admin/verify/{id}` | Adm/Mod | Aprueba/Rechaza sugerencias de cambios. |
+| GET | `/admin/reports` | Adm/Mod | Lista reportes de spam o contenido inapropiado. |
+| DELETE| `/admin/users/{id}` | Admin | Suspensión definitiva de cuenta. |
+
+---
+
+## Notas Técnicas
+- **Rate Limiting**: La mayoría de los endpoints de escritura tienen un límite de 10-30 peticiones por minuto (SlowAPI).
+- **Formatos**: Entrada y salida en JSON (UTF-8).
+- **Imágenes**: Procesadas en el servidor utilizando Pillow (redimensión y optimización).

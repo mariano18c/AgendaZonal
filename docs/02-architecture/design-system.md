@@ -1,56 +1,56 @@
-# Design System & UI/UX Patterns
+# Design System & UI/UX Patterns: Premium Edition
 
-## Design Tokens
+Este documento define la identidad visual de AgendaZonal, priorizando una estética **Premium**, moderna y de alta fidelidad, optimizada para rendimiento en móviles.
 
-### Color Palette (Tailwind)
-| Token | Hex | Usage |
+## Design Tokens (Premium Palette)
+
+No usamos colores básicos. Utilizamos una paleta basada en HSL para mayor armonía y control.
+
+| Token | HSL | Usage |
 |-------|-----|-------|
-| `blue-600` | #2563eb | Primary Action, Branding |
-| `green-600` | #16a34a | Success, Verified Badges |
-| `amber-500` | #f59e0b | Flash Offers, Warnings |
-| `red-600` | #dc2626 | Critical Errors, Deletion |
-| `gray-900` | #111827 | Headings, Main Text |
-| `gray-600` | #4b5563 | Body Text |
-
-### Typography
-- **Font Stack**: Default System Sans (Inter fallback).
-- **Style**: Mobile-first emphasis. Títulos en `font-bold`, Cuerpo en `leading-relaxed`.
+| `primary-gradient` | `linear-gradient(135deg, #2563eb, #1d4ed8)` | Brand actions, Main Buttons |
+| `success-soft` | `hsl(142, 70%, 95%)` | Background for success banners |
+| `danger-vibrant` | `hsl(0, 84%, 60%)` | Critical errors, Deletion |
+| `glass-bg` | `rgba(255, 255, 255, 0.7)` | Navbar, Overlays (require `backdrop-filter`) |
+| `surface-900` | `hsl(222, 47%, 11%)` | Midnight mode surfaces |
 
 ---
 
 ## UI Components Standards
 
-### Buttons
-- **Primary**: `bg-blue-600 text-white hover:bg-blue-700`
-- **Secondary**: `bg-gray-100 text-gray-700 hover:bg-gray-200`
-- **Ghost**: `text-blue-600 hover:bg-blue-50`
+### 1. Glassmorphism Effects
+Para elementos flotantes (navbars, cards sobre mapas), aplicar:
+- `bg-white/70 backdrop-blur-md border border-white/20`.
+- Shadow: `shadow-[0_8px_32px_0_rgba(31,38,135,0.07)]`.
 
-### Cards
-- **Provider Card**: `rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow`
+### 2. Premium Typography
+- **Headings**: `font-outfit` (fallback Sans) con `tracking-tight`.
+- **Contrast**: El texto principal siempre debe ser `text-slate-900` sobre fondos claros.
 
 ---
 
-## Interaction Patterns (UX)
+## Interaction Patterns (Micro-animations)
 
-### Tone & Voice
-- **Estilo**: Voseo Rioplatense ("Buscá", "Encontrá tus servicios").
-- **Claridad**: Evitar tecnicismos en la UI. "Rubros" en lugar de "Categorías".
+### Hover & Active States
+- **Scale**: Los botones principales deben escalar ligeramente (`scale-95`) al ser clickeados.
+- **Transición**: Usar siempre `duration-300 ease-out`.
 
 ### Feedback Core
-- **Loading States**: Uso obligatorio de `animate-spin` en botones durante peticiones async.
-- **Empty States**: Mensajes claros con "Call to Action" alternativos.
-- **Error Handling**: Toasts rojos en el bottom-center para API failures.
+- **Loading Skeletons**: Prohibido usar "Cargando...". Usar placeholders animados que imiten la estructura de la card.
+- **Haptic (Mobile)**: Al completar una acción crítica (ej: enviar reseña), disparar feedback visual suave (expand-fade).
 
 ---
 
-## PWA & Performance
-- **Offline Fallback**: `offline.html` precacheado.
-- **Image Strategy**: Max-width 1200px, JPEG format, Lazy-loading nativo (`loading="lazy"`).
-- **Map Interaction**: Minimizar refrescos del mapa Leaflet; usar `MarkerCluster` para alta densidad.
+## PWA & Responsive Patterns
+
+### Mobile-First Layout
+- **Safe Area**: Respetar `env(safe-area-inset-bottom)` para el menú inferior.
+- **Gestos**: Las galerías de imágenes deben ser "swipeables" Nativamente.
 
 ---
 
 ## Accessibility
-- **Contraste**: Ratio mínimo 4.5:1 para texto legible.
-- **Interactive Areas**: Target mínimo de 44px para móviles.
-- **Aria**: Uso estricto de `aria-label` en botones de iconos (ej: WhatsApp share).
+- **Contrast Ratio**: Mínimo 7:1 para legibilidad máxima en exteriores (Rosario al sol).
+- **Interactive Targets**: Target mínimo de **48x48px**.
+- **Dark Mode**: Implementar mediante clases `dark:` respetando la paleta HSL invertida.
+

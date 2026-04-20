@@ -1,58 +1,60 @@
-# Convenciones de Desarrollo y Patrones
+# Convenciones de Desarrollo y Patrones: High-Efficiency
 
-## Nomenclatura y Estándares
-- **Código**: CamelCase para clases, snake_case para funciones y variables.
-- **Git**: Commits bajo estándar [Conventional Commits](https://www.conventionalcommits.org/) (feat:, fix:, docs:, refactor:).
-- **Idioma**: Comentarios y documentación técnica en **Inglés** (Technical English). Interfaz de usuario en **Español Rioplatense**.
+Este documento detalla los estándares técnicos para garantizar la mantenibilidad y el rendimiento en el hardware objetivo (Raspberry Pi 5).
 
-## Backend Architecture (FastAPI)
-Siguiendo la **Arquitectura de Capas**:
-1.  **Routes (`app/routes/`)**: Definición de endpoints y parseo de inputs.
-2.  **Services (`app/services/`)**: Lógica de negocio compleja y orquestación.
-3.  **Repositories (`app/repositories/`)**: Consultas SQLAlchemy. **Regla de oro**: Las rutas nunca tocan el objeto Session directamente.
-4.  **Models/Schemas**: SQLAlchemy para DB, Pydantic para validación/DTOs.
+## Backend Architecture (FastAPI + SQLAlchemy)
 
-### Patrones de Código
-#### Service Validation
-Los métodos de servicio que validan existencia deben terminar en `_with_validation`.
+### 1. Repository Pattern (Strict)
+Los Repositorios son los únicos autorizados para interactuar con `db.query`.
+- **Ubicación**: `backend/app/repositories/`
+- **Regla**: No se debe retornar el objeto `query`, sino siempre el resultado ejecutado (`.first()`, `.all()`, `.scalar()`).
+
+### 2. Service Layer (Business Logic)
+Los servicios orquestan repositorios y lanzan excepciones de FastAPI.
+- **Ubicación**: `backend/app/services/`
+- **Naming**: Los métodos que pueden fallar por "no encontrado" deben usar el sufijo `_with_validation`.
+
+### 3. Schemas (Pydantic v2)
+Uso de validación estricta para prevenir inyección de datos basura.
 ```python
-def get_contact_with_validation(db: Session, contact_id: int):
-    contact = repository.get_by_id(db, contact_id)
-    if not contact:
-        raise HTTPException(status_code=404, detail="Contacto no encontrado")
-    return contact
+class ContactBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
+    name: str = Field(..., min_length=3, max_length=100)
 ```
 
-## Frontend Architecture
-- **Tech Stack**: HTML5 + Tailwind CSS (Compiled) + Vanilla JS.
-- **PWA**: Offline-first con Service Worker (`sw.js`).
-- **Responsive**: Mobile-first grid system.
+---
 
-### API Integration Pattern
-Siempre usar el cliente base en `js/api.js` para manejar tokens y errores.
-```javascript
-async function apiCall(endpoint, options = {}) {
-    const token = await getAuthToken(); // From HttpOnly or helper
-    // ... logic for headers and fetch
-}
+## Performance Patterns for RPi 5
+
+### I/O Management
+- **Async Everywhere**: Todos los endpoints de la API deben ser `async def` para no bloquear el Event Loop de Uvicorn.
+- **No Heavy Loops**: Cualquier procesamiento pesado de listas (>1000 items) debe hacerse mediante generadores o paginación en base de datos.
+- **Logging**: Usar `logging.handlers.RotatingFileHandler` para no saturar el espacio en la SD.
+
+---
+
+## Global Error Handling Pattern
+
+No usar `try/except` genéricos en las rutas. Usar el handler global definido en `main.py` y lanzar excepciones específicas:
+```python
+raise HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={"msg": "Stock insuficiente para oferta flash", "code": "ERR_STOCK_LOW"}
+)
 ```
 
-## Base de Datos (SQLite)
-- **WAL Mode**: Activado para permitir lecturas concurrentes.
-- **Migraciones**: SQLite no soporta `ALTER COLUMN`. Usar el patrón de tabla temporal para cambios de esquema complejos.
+---
 
-## Guía de Comandos Frecuentes
-- **Server**: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
-- **Tests**: `pytest tests/ -v --cov=app`
-- **DB Reset**: `rm app.db && python init_db.py`
+## Frontend Architecture (Vanilla JS Modular)
 
-## Diagrama de Componentes
-```mermaid
-graph TD
-    User((Usuario/PWA)) -->|HTTPS| Caddy[Caddy Proxy]
-    Caddy -->|L8000| FastAPI[FastAPI App]
-    FastAPI -->|JWT| Auth[Auth Service]
-    FastAPI -->|SQLAlchemy| SQLite[(SQLite DB)]
-    FastAPI -->|FS| Uploads[Uploads/Images]
-    FastAPI -->|VAPID| Push[Web Push]
-```
+### Module Pattern
+Cada página tiene su propio archivo JS que exporta una función `init()`.
+- **Evitar Polución Global**: No declarar variables en `window` a menos que sea estrictamente necesario (ej: `API_BASE_URL`).
+- **State Management**: Usar el patrón Observer simple para cambios que afecten a múltiples componentes UI.
+
+---
+
+## Git & Workflow
+- **Conventional Commits**: `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`.
+- **PRs**: Cada cambio debe pasar el linter (`flake8`) y los tests unitarios antes de ser mergeado.
+
