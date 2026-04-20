@@ -26,67 +26,84 @@
   <main class="max-w-6xl mx-auto px-4 py-8">
     <div id="breadcrumbs"></div>
     <!-- Búsqueda Tabs -->
-    <div class="mb-6">
-      <div class="flex gap-2 mb-4">
-        <button onclick="switchTab('text')" id="tab-text" class="search-tab active px-4 py-2 rounded-lg border text-sm font-medium">
-          🔍 Texto
-        </button>
-        <button onclick="switchTab('geo')" id="tab-geo" class="search-tab px-4 py-2 rounded-lg border text-sm font-medium bg-white">
-          📍 Cerca de mí
-        </button>
-      </div>
-
-      <!-- Búsqueda por texto -->
-      <div id="panel-text" class="flex gap-2 max-w-md">
-        <input
-          type="text"
-          id="searchInput"
-          placeholder="Buscar por nombre, teléfono o ciudad..."
-          class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
+    <div class="mb-8">
+      <!-- Universal Search Bar -->
+      <div class="flex gap-4 max-w-2xl mb-8">
+        <div class="flex-1">
+          <input
+            type="text"
+            id="searchInput"
+            aria-label="Buscar contactos por nombre, teléfono o ciudad"
+            placeholder="Buscar por nombre, teléfono o ciudad..."
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+        </div>
         <button
           onclick="doSearch()"
-          class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+          class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium flex items-center gap-2"
         >
-          Buscar
+          🔍 Buscar
         </button>
       </div>
 
-      <!-- Búsqueda por geolocalización -->
+      <!-- Discovery Tabs -->
+      <div class="flex gap-2 mb-6 border-b">
+        <button 
+          onclick="switchTab('text')" 
+          id="tab-text" 
+          class="search-tab active px-6 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition-all"
+        >
+          📄 Resultados
+        </button>
+        <button 
+          onclick="switchTab('geo')" 
+          id="tab-geo" 
+          class="search-tab px-6 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-all"
+        >
+          📍 Cerca de mí (Mapa)
+        </button>
+      </div>
+
+      <!-- Tab Panels -->
+      <div id="panel-text" class="block">
+        <!-- Text search results are handled by contactsGrid BELOW -->
+      </div>
+
       <div id="panel-geo" class="hidden">
-        <div class="flex flex-wrap gap-3 items-center mb-4">
-          <button
-            onclick="geoSearch()"
-            id="geoSearchBtn"
-            class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-          >
-            📍 Buscar cerca de mí
-          </button>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-600">Radio:</label>
-            <select id="radiusSelect" class="px-3 py-2 border rounded-lg text-sm">
-              <option value="1">1 km</option>
-              <option value="3">3 km</option>
-              <option value="5">5 km</option>
-              <option value="10" selected>10 km</option>
-              <option value="20">20 km</option>
-              <option value="50">50 km</option>
-            </select>
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4 flex flex-wrap gap-4 items-center justify-between">
+          <div class="flex items-center gap-4">
+            <button
+              onclick="geoSearch()"
+              id="geoSearchBtn"
+              class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2 font-medium"
+            >
+              🎯 Actualizar ubicación
+            </button>
+            <div class="flex items-center gap-2">
+              <label for="radiusSelect" class="text-sm font-medium text-gray-700">Radio:</label>
+              <select id="radiusSelect" class="px-3 py-2 border rounded-lg text-sm bg-white">
+                <option value="1">1 km</option>
+                <option value="3">3 km</option>
+                <option value="5">5 km</option>
+                <option value="10" selected>10 km</option>
+                <option value="20">20 km</option>
+                <option value="50">50 km</option>
+              </select>
+            </div>
           </div>
-          <span id="geoStatus" class="text-sm text-gray-500"></span>
+          <span id="geoStatus" class="text-sm text-blue-700 font-medium"></span>
         </div>
-        <div id="searchMap" data-lazy-map="true"></div>
+        <div id="searchMap" data-lazy-map="true" class="mb-6 shadow-sm border border-gray-200"></div>
       </div>
     </div>
 
     <div id="resultsInfo" class="mb-4 text-gray-600"></div>
     <div id="contactDetail" class="hidden mb-8"></div>
     <div id="contactsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      ${renderSkeleton({type: 'card', count: 6})}
+      <!-- Cargado vía JS -->
     </div>
     <div id="pagination" class="mt-4"></div>
     <div id="noResults" class="hidden">
-      ${renderEmptyState({emoji: '🔍', title: 'Sin resultados', subtitle: 'No se encontraron contactos con esos criterios', cta: {label: 'Ver todas las categorías', onClick: () => window.location.href = '/search'}})}
     </div>
   </main>
 
@@ -96,11 +113,26 @@
     let activeTab = 'text';
 
     function switchTab(tab) {
+      // Toggle logic: if clicking the active geo tab, go back to text
+      if (tab === 'geo' && activeTab === 'geo') {
+        tab = 'text';
+      }
+      
       activeTab = tab;
       ['text', 'geo'].forEach(t => {
-        document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
-        document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
-        document.getElementById(`tab-${t}`).classList.toggle('bg-white', t !== tab);
+        const panel = document.getElementById(`panel-${t}`);
+        const tabBtn = document.getElementById(`tab-${t}`);
+        const isActive = (t === tab);
+        
+        if (panel) panel.classList.toggle('hidden', !isActive);
+        if (tabBtn) {
+          // Toggle active classes
+          tabBtn.classList.toggle('border-blue-600', isActive);
+          tabBtn.classList.toggle('text-blue-600', isActive);
+          // Toggle inactive classes
+          tabBtn.classList.toggle('border-transparent', !isActive);
+          tabBtn.classList.toggle('text-gray-500', !isActive);
+        }
       });
 
       // Initialize map lazily when geo tab is first shown
@@ -110,6 +142,9 @@
         mapContainer.innerHTML = '<div class="map-loading">Cargando mapa...</div>';
         window.LazyLoadingUtility.loadLeaflet().then(() => {
           map = window.L.map('searchMap').setView([-32.862574, -60.759585], 12);
+          if (typeof setupAccessibilityFocusManagement === 'function') {
+            setupAccessibilityFocusManagement(map);
+          }
           window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
           }).addTo(map);
@@ -124,10 +159,26 @@
     // --- Text search ---
     function doSearch() {
       const query = document.getElementById('searchInput').value.trim();
+      const params = new URLSearchParams(window.location.search);
+      
       if (query) {
-        window.location.href = `/search?q=${encodeURIComponent(query)}`;
+        params.set('q', query);
       } else {
-        window.location.href = '/search';
+        params.delete('q');
+      }
+
+      // If we are in geo mode, we stay in geo mode but with new text filter
+      if (activeTab === 'geo') {
+        const status = document.getElementById('geoStatus');
+        status.textContent = 'Actualizando búsqueda...';
+        geoSearch();
+        
+        // Update URL without reload to preserve state
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+      } else {
+        // In text mode, we do a full search (redirect to ensure clean state or use searchByQuery)
+        window.location.href = `/search?${params.toString()}`;
       }
     }
 
@@ -151,6 +202,9 @@
         try {
           await window.LazyLoadingUtility.loadLeaflet();
           map = window.L.map('searchMap').setView([-32.862574, -60.759585], 12);
+          if (typeof setupAccessibilityFocusManagement === 'function') {
+            setupAccessibilityFocusManagement(map);
+          }
           window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
           }).addTo(map);
@@ -187,15 +241,22 @@
         const pos = await getUserLocation();
         status.textContent = `📍 Ubicación obtenida. Buscando en radio de ${radius} km...`;
 
+        // Combine with current filters
+        const query = document.getElementById('searchInput').value.trim();
+        const urlParams = new URLSearchParams(window.location.search);
+        const categoryId = urlParams.get('category');
+
         // Show user location and radius on map
         addUserLocationMarker(map, pos.lat, pos.lon);
         addRadiusCircle(map, pos.lat, pos.lon, radius);
         map.setView([pos.lat, pos.lon], 13);
 
-        // Search via API
-        const data = await searchContactsGeo(pos.lat, pos.lon, radius);
+        // Search via API (combined)
+        const data = await searchContactsGeo(pos.lat, pos.lon, radius, query, categoryId);
         const contacts = data.contacts || data;
-        status.textContent = `✅ ${contacts.length} resultado${contacts.length !== 1 ? 's' : ''} en radio de ${radius} km`;
+        let statusMsg = `✅ ${contacts.length} resultado${contacts.length !== 1 ? 's' : ''}`;
+        if (query) statusMsg += ` para "${query}"`;
+        status.textContent = statusMsg;
 
         renderContacts(contacts);
 
@@ -221,6 +282,10 @@
       const lat = params.get('lat');
       const lon = params.get('lon');
 
+      if (query) {
+        document.getElementById('searchInput').value = query;
+      }
+
       if (contactId) {
         await loadContactDetail(contactId);
         return;
@@ -229,13 +294,26 @@
       // Geo search via URL params
       if (lat && lon) {
         switchTab('geo');
-        const radius = parseFloat(params.get('radius_km') || '5');
+        const radius = parseFloat(params.get('radius_km') || '10');
         document.getElementById('radiusSelect').value = radius;
-        document.getElementById('geoStatus').textContent = 'Buscando por coordenadas...';
+        document.getElementById('geoStatus').textContent = 'Buscando con filtros aplicados...';
         try {
-          const contacts = await searchContactsGeo(parseFloat(lat), parseFloat(lon), radius);
+          // Combined search on load
+          const data = await searchContactsGeo(parseFloat(lat), parseFloat(lon), radius, query, categoryId);
+          const contacts = data.contacts || data;
           document.getElementById('geoStatus').textContent = `${contacts.length} resultado${contacts.length !== 1 ? 's' : ''}`;
           renderContacts(contacts);
+          
+          // Ensure map is initialized even on direct load
+          if (!map) {
+             // This will be handled by switchTab('geo') lazy init, but we might need to wait
+             let waitCount = 0;
+             while (!map && waitCount < 20) {
+               await new Promise(r => setTimeout(r, 100));
+               waitCount++;
+             }
+          }
+
           if (map) {
             addUserLocationMarker(map, parseFloat(lat), parseFloat(lon));
             addRadiusCircle(map, parseFloat(lat), parseFloat(lon), radius);
@@ -251,7 +329,6 @@
       }
 
       if (query) {
-        document.getElementById('searchInput').value = query;
         await searchByQuery(query);
         return;
       }
@@ -430,6 +507,12 @@ async function searchByCategory(categoryId, page = 1) {
 
       if (contacts.length === 0) {
         grid.classList.add('hidden');
+        noResults.innerHTML = renderEmptyState({
+          emoji: '🔍',
+          title: 'Sin resultados',
+          subtitle: 'No se encontraron contactos con esos criterios',
+          cta: { label: 'Ver todas las categorías', onClick: () => window.location.href = '/search' }
+        });
         noResults.classList.remove('hidden');
         return;
       }

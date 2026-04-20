@@ -11,6 +11,8 @@ class UtilityItemCreate(BaseModel):
     lat: float | None = None
     lon: float | None = None
     city: str | None = Field(None, max_length=100)
+    is_priority: bool = False
+    notification_message: str | None = Field(None, max_length=200)
 
 
 class UtilityItemResponse(BaseModel):
@@ -25,5 +27,6 @@ class UtilityItemResponse(BaseModel):
     lat: float | None = None
     lon: float | None = None
     city: str | None = None
+    is_priority: bool
     is_active: bool
     created_at: datetime | None = None

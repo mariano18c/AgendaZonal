@@ -69,6 +69,20 @@
             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             placeholder="Ej: Zona Norte">
         </div>
+        <div class="mb-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="utilityIsPriority" onchange="toggleNotifMsg()" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+            <span class="text-sm font-medium text-gray-800">⚠️ Marcar como Prioridad / Alerta</span>
+          </label>
+          <p class="text-xs text-gray-500 ml-6 mt-1">Disparará una notificación push a los vecinos de la ciudad seleccionada.</p>
+        </div>
+        <div id="notifMsgContainer" class="hidden mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <label class="block text-xs font-semibold text-blue-800 uppercase mb-2">Mensaje de Notificación (Opcional)</label>
+          <textarea id="utilityNotifMsg" maxlength="200" rows="2"
+            class="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+            placeholder="Ej: La farmacia estará abierta hasta las 00hs por urgencia."></textarea>
+          <p class="text-[10px] text-blue-600 mt-1">Si se deja vacío, se enviará un mensaje automático.</p>
+        </div>
         <div id="utilityError" class="text-red-600 text-sm mb-4"></div>
         <div class="flex gap-3 justify-end">
           <button type="button" onclick="closeUtilityModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition">Cancelar</button>
@@ -139,6 +153,9 @@
         document.getElementById('utilityAddress').value = item.address || '';
         document.getElementById('utilitySchedule').value = item.schedule || '';
         document.getElementById('utilityCity').value = item.city || '';
+        document.getElementById('utilityIsPriority').checked = !!item.is_priority;
+        document.getElementById('utilityNotifMsg').value = ''; // Always empty on open for new alert
+        toggleNotifMsg();
       } else {
         title.textContent = 'Agregar';
       }
@@ -151,6 +168,16 @@
       const modal = document.getElementById('utilityModal');
       modal.classList.add('hidden');
       modal.classList.remove('flex');
+    }
+
+    function toggleNotifMsg() {
+      const isPriority = document.getElementById('utilityIsPriority').checked;
+      const container = document.getElementById('notifMsgContainer');
+      if (isPriority) {
+        container.classList.remove('hidden');
+      } else {
+        container.classList.add('hidden');
+      }
     }
 
     async function handleUtilitySubmit(e) {
@@ -172,6 +199,8 @@
         address: document.getElementById('utilityAddress').value.trim() || null,
         schedule: document.getElementById('utilitySchedule').value.trim() || null,
         city: document.getElementById('utilityCity').value.trim() || null,
+        is_priority: document.getElementById('utilityIsPriority').checked,
+        notification_message: document.getElementById('utilityNotifMsg').value.trim() || null,
       };
 
       btn.disabled = true;

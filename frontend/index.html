@@ -30,9 +30,9 @@
           >
           <button
             onclick="doSearch()"
-            class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+            class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
           >
-            Buscar
+            🔍 Buscar
           </button>
         </div>
       </div>
@@ -152,14 +152,31 @@
           return;
         }
         const typeLabels = { farmacia_turno: '💊', emergencia: '🚨', otro: '📋' };
-        grid.innerHTML = data.slice(0, 6).map(u => `
-          <div class="bg-white rounded-lg shadow-sm border p-4">
-            <div class="font-semibold text-gray-800">${typeLabels[u.type] || '📋'} ${escapeHtml(u.name)}</div>
-            ${u.phone ? `<div class="text-blue-600 mt-1"><a href="tel:${escapeHtml(u.phone)}">📞 ${escapeHtml(u.phone)}</a></div>` : ''}
-            ${u.address ? `<div class="text-gray-500 text-sm mt-1">📍 ${escapeHtml(u.address)}</div>` : ''}
-            ${u.schedule ? `<div class="text-gray-500 text-sm mt-1">🕐 ${escapeHtml(u.schedule)}</div>` : ''}
-          </div>
-        `).join('');
+        
+        // Sort: Priority items first
+        const sortedData = [...data].sort((a, b) => (b.is_priority === a.is_priority) ? 0 : b.is_priority ? 1 : -1);
+
+        grid.innerHTML = sortedData.slice(0, 6).map(u => {
+          const isPriority = !!u.is_priority;
+          const priorityClasses = isPriority 
+            ? 'ring-2 ring-red-500 bg-red-50 border-red-200' 
+            : 'bg-white border-gray-100';
+          const badgeHtml = isPriority 
+            ? '<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white animate-pulse">ALERTA</span>' 
+            : '';
+            
+          return `
+            <div class="rounded-lg shadow-sm border p-4 transition-all ${priorityClasses}">
+              <div class="flex items-start justify-between">
+                <div class="font-semibold text-gray-800">${typeLabels[u.type] || '📋'} ${escapeHtml(u.name)} ${badgeHtml}</div>
+              </div>
+              ${u.phone ? `<div class="text-blue-600 mt-1 font-medium"><a href="tel:${escapeHtml(u.phone)}">📞 ${escapeHtml(u.phone)}</a></div>` : ''}
+              ${u.address ? `<div class="text-gray-500 text-sm mt-1">📍 ${escapeHtml(u.address)}</div>` : ''}
+              ${u.schedule ? `<div class="text-gray-600 text-sm mt-1 flex items-center gap-1"><span>🕐</span> ${escapeHtml(u.schedule)}</div>` : ''}
+              ${u.city && isPriority ? `<div class="text-red-700 text-[10px] font-bold uppercase mt-2">Zona: ${escapeHtml(u.city)}</div>` : ''}
+            </div>
+          `;
+        }).join('');
       } catch (err) {
         grid.innerHTML = '<div class="text-gray-500 col-span-full">Utilidades no disponibles</div>';
       }

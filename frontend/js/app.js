@@ -300,10 +300,35 @@ async function subscribeToPush() {
 
   // Ensure current user is linked to the subscription in backend (always send)
   try {
+    // Try to get user location for smarter push targeting
+    let latitude = null;
+    let longitude = null;
+    let city = null;
+
+    try {
+      if (typeof getUserLocation === 'function') {
+        const pos = await getUserLocation();
+        latitude = pos.lat;
+        longitude = pos.lon;
+        
+        // Use a simple query to get city name from lat/lon if needed, 
+        // but for now we'll send coordinates and the backend can use them.
+        // If we have a city already in localStorage from a previous search, use it.
+        city = localStorage.getItem('last_city');
+      }
+    } catch (e) {
+      console.log('Push: Geolocation skipped or denied during subscription');
+    }
+
     console.log('subscribeToPush: Sending subscription to backend for user linkage...');
     await apiRequest('/api/notifications/subscribe', {
       method: 'POST',
-      body: JSON.stringify(subscription),
+      body: JSON.stringify({
+        ...subscription.toJSON(),
+        latitude,
+        longitude,
+        city
+      }),
     });
     console.log('Push: Subscribed/Linked successfully');
   } catch (err) {

@@ -67,7 +67,41 @@ function initMap(containerId, lat, lon, zoom = 13) {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   }).addTo(map);
+
+  setupAccessibilityFocusManagement(map);
   return map;
+}
+
+/**
+ * Setup global focus management for map popups.
+ * @param {L.Map} map 
+ */
+function setupAccessibilityFocusManagement(map) {
+  let lastFocusedElement = null;
+
+  map.on('popupopen', (e) => {
+    lastFocusedElement = document.activeElement;
+    // Small delay to ensure popup is fully rendered
+    setTimeout(() => {
+      const popup = e.popup.getElement();
+      if (popup) {
+        // Set role dialog for the popup
+        popup.setAttribute('role', 'dialog');
+        popup.setAttribute('aria-modal', 'false');
+        
+        // Find first link or button inside popup and focus it
+        const firstInteractive = popup.querySelector('a, button');
+        if (firstInteractive) firstInteractive.focus();
+      }
+    }, 100);
+  });
+
+  map.on('popupclose', () => {
+    // Return focus to the marker if possible
+    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+      lastFocusedElement.focus();
+    }
+  });
 }
 
 /**
@@ -83,7 +117,21 @@ function addUserLocationMarker(map, lat, lon) {
     iconSize: [16, 16],
     iconAnchor: [8, 8],
   });
-  return L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup('Tu ubicación');
+  const marker = L.marker([lat, lon], { 
+    icon: userIcon,
+    title: 'Tu ubicación',
+    alt: 'Mi ubicación actual en el mapa'
+  }).addTo(map).bindPopup('Tu ubicación');
+
+  marker.on('add', () => {
+    const el = marker.getElement();
+    if (el) {
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', 'Mi ubicación actual. Presiona para ver detalles.');
+    }
+  });
+
+  return marker;
 }
 
 /**
@@ -147,12 +195,39 @@ function addContactMarkers(map, contacts) {
   const markers = [];
   contacts.forEach(c => {
     if (c.latitude && c.longitude) {
-      const marker = L.marker([c.latitude, c.longitude])
-        .bindPopup(createContactPopup(c), { maxWidth: 250 });
+      const marker = L.marker([c.latitude, c.longitude], {
+        title: c.name,
+        alt: `Marcador de ${c.name}`
+      }).bindPopup(createContactPopup(c), { maxWidth: 250 });
+      
+      marker.on('add', () => {
+        const el = marker.getElement();
+        if (el) {
+          el.setAttribute('role', 'button');
+          el.setAttribute('aria-label', `Marcador de ${c.name}. Presiona para ver detalles.`);
+        }
+      });
+      
       markers.push(marker);
     }
   });
-  window._contactMarkers = L.markerClusterGroup();
+  
+  window._contactMarkers = L.markerClusterGroup({
+    iconCreateFunction: function(cluster) {
+      const childCount = cluster.getChildCount();
+      let c = ' marker-cluster-';
+      if (childCount < 10) { c += 'small'; } 
+      else if (childCount < 100) { c += 'medium'; } 
+      else { c += 'large'; }
+
+      return L.divIcon({ 
+        html: `<div aria-label="Grupo de ${childCount} contactos" role="group"><span> ${childCount} </span></div>`, 
+        className: 'marker-cluster' + c, 
+        iconSize: new L.Point(40, 40) 
+      });
+    }
+  });
+  
   window._contactMarkers.addLayers(markers);
   map.addLayer(window._contactMarkers);
   return window._contactMarkers;

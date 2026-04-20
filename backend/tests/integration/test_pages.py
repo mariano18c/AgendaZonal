@@ -68,7 +68,7 @@ class TestCategories:
         r = client.get("/api/categories")
         assert r.status_code == 200
         cats = r.json()
-        assert len(cats) == 24
+        assert len(cats) == 36
         codes = [c["code"] for c in cats]
         assert 100 in codes
         assert 999 in codes

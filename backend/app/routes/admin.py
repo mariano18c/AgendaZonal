@@ -17,7 +17,7 @@ from app.models.utility_item import UtilityItem
 from app.schemas.report import ReportCreate, ReportResponse
 from app.schemas.utility import UtilityItemCreate, UtilityItemResponse
 from app.auth import get_current_user
-from app.routes.notifications import send_push_to_roles
+from app.routes.notifications import send_push_to_roles, send_push_to_zone
 
 router = APIRouter(tags=["admin"])
 
@@ -458,10 +458,28 @@ def create_utility(
     if user.role not in ['admin', 'moderator']:
         raise HTTPException(status_code=403, detail="Requiere rol de admin o moderador")
 
-    item = UtilityItem(**data.model_dump(), created_by=user.id)
+    # Extract notification message and remove it from model creation
+    notif_msg = data.notification_message
+    item_data = data.model_dump()
+    item_data.pop("notification_message", None)
+
+    item = UtilityItem(**item_data, created_by=user.id)
     db.add(item)
     db.commit()
     db.refresh(item)
+
+    # Trigger emergency broadcast if priority
+    if item.is_priority:
+        push_title = f"🚨 Alerta: {item.name}"
+        push_body = notif_msg if notif_msg else f"Nueva alerta de utilidad en {item.city or 'la zona'}."
+        send_push_to_zone(
+            db=db,
+            title=push_title,
+            body=push_body,
+            city=item.city,
+            url="/admin/utilities"
+        )
+
     return item
 
 
@@ -480,7 +498,11 @@ def update_utility(
     if not item:
         raise HTTPException(status_code=404, detail="Utilidad no encontrada")
 
-    for key, value in data.model_dump().items():
+    # Update fields excluding notification_message
+    update_data = data.model_dump()
+    update_data.pop("notification_message", None)
+
+    for key, value in update_data.items():
         setattr(item, key, value)
     db.commit()
     db.refresh(item)

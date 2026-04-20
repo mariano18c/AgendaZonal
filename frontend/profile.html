@@ -274,7 +274,18 @@
         if (contact.latitude && contact.longitude) {
           setTimeout(() => {
             const miniMap = initMap('map', contact.latitude, contact.longitude, 15);
-            L.marker([contact.latitude, contact.longitude]).addTo(miniMap).bindPopup(s(contact.name));
+            const marker = L.marker([contact.latitude, contact.longitude], {
+              title: contact.name,
+              alt: `Marcador de ${contact.name}`
+            }).addTo(miniMap).bindPopup(s(contact.name));
+            
+            marker.on('add', () => {
+              const el = marker.getElement();
+              if (el) {
+                el.setAttribute('role', 'button');
+                el.setAttribute('aria-label', `Marcador de ${contact.name}. Presiona para ver detalles.`);
+              }
+            });
           }, 100);
         }
 
@@ -431,7 +442,8 @@
       try { await deleteContact(contactId); alert('Contacto eliminado'); window.location.href = '/search'; }
       catch (err) { alert('Error: ' + err.message); }
     }
-    // ---------- Report Contact Modal ----------
+
+    // ---------- Report Contact Modal ----------
     let _reportContactId = null;
 
     function ensureReportModalExists() {

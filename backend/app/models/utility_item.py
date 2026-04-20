@@ -15,6 +15,7 @@ class UtilityItem(Base):
     lat = Column(Float)
     lon = Column(Float)
     city = Column(String(100))
+    is_priority = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, server_default=func.now())

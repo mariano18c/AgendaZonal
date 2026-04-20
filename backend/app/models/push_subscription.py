@@ -1,5 +1,5 @@
 """PushSubscription model for Web Push notifications."""
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func, Float
 from app.database import Base
 
 
@@ -16,5 +16,8 @@ class PushSubscription(Base):
     endpoint = Column(String(500), nullable=False, unique=True)
     p256dh = Column(String(200), nullable=False)
     auth = Column(String(100), nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    city = Column(String(100), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -36,6 +36,9 @@ def get_vapid_public_key():
 class SubscriptionRequest(BaseModel):
     endpoint: str
     keys: dict  # { p256dh: str, auth: str }
+    latitude: float | None = None
+    longitude: float | None = None
+    city: str | None = None
 
 
 @router.post("/subscribe")
@@ -65,12 +68,18 @@ def subscribe_push(
         existing.user_id = user.id
         existing.p256dh = p256dh
         existing.auth = auth
+        existing.latitude = body.latitude
+        existing.longitude = body.longitude
+        existing.city = body.city
     else:
         subscription = PushSubscription(
             user_id=user.id,
             endpoint=body.endpoint,
             p256dh=p256dh,
             auth=auth,
+            latitude=body.latitude,
+            longitude=body.longitude,
+            city=body.city
         )
         db.add(subscription)
 
@@ -165,6 +174,74 @@ def send_push_to_user(db: Session, user_id: int, title: str, body: str, url: str
                 logger.warning(f"Push send failed for subscription {sub.id}: {e}")
 
     # Clean up expired subscriptions
+    if expired:
+        db.query(PushSubscription).filter(PushSubscription.id.in_(expired)).delete()
+        db.commit()
+
+    return success_count
+
+
+def send_push_to_zone(db: Session, title: str, body: str, city: str | None = None, url: str = "/"):
+    """Send a push notification to users in a specific city/zone.
+
+    Args:
+        db: Database session
+        title: Notification title
+        body: Notification body text
+        city: Target city name (optional)
+        url: URL to open on click
+
+    Returns:
+        Number of successful sends
+    """
+    if not VAPID_PRIVATE_KEY:
+        return 0
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return 0
+
+    query = db.query(PushSubscription)
+    if city:
+        query = query.filter(PushSubscription.city.ilike(f"%{city}%"))
+    
+    subscriptions = query.all()
+    if not subscriptions:
+        return 0
+
+    payload = json.dumps({
+        "title": title,
+        "body": body,
+        "url": url,
+    })
+
+    success_count = 0
+    expired = []
+
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {
+                        "p256dh": sub.p256dh,
+                        "auth": sub.auth,
+                    },
+                },
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={
+                    "sub": VAPID_CLAIM_EMAIL,
+                },
+            )
+            success_count += 1
+        except WebPushException as e:
+            if e.response and e.response.status_code in (404, 410):
+                expired.append(sub.id)
+            else:
+                logger.warning(f"Push send failed: {e}")
+
     if expired:
         db.query(PushSubscription).filter(PushSubscription.id.in_(expired)).delete()
         db.commit()
