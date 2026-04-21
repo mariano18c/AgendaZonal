@@ -1,5 +1,10 @@
 # 📍 AgendaZonal — Directorio Hiperlocal
 
+[![CI](https://github.com/AgendaZonal/AgendaZonal/actions/workflows/ci.yml/badge.svg)](https://github.com/AgendaZonal/AgendaZonal/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/AgendaZonal/AgendaZonal?token=placeholder)](https://codecov.io/gh/AgendaZonal/AgendaZonal)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/AgendaZonal/AgendaZonal.svg)](./LICENSE)
+
 Directorio digital de servicios y comercios para barrios de Rosario e Ibarlucea, Argentina. Una solución moderna (PWA) para conectar vecinos con proveedores de confianza, optimizada para funcionar en **Raspberry Pi 5**.
 
 ---

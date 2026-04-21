@@ -1,0 +1,36 @@
+name: CD
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Build deployment package
+      run: |
+        echo "Building deployment package..."
+        # Placeholder: in the future, this will build Docker image or create deployment artifact
+        echo "Deployment package ready"
+    
+    - name: Deploy to staging (placeholder)
+      run: |
+        echo "Deploy to staging placeholder"
+        # TODO: Implement actual deployment to staging/production
+        # Options: SSH to RPi, Docker push, rsync, etc.
+    
+    - name: Notify deployment
+      if: always()
+      run: |
+        echo "Deployment step completed"

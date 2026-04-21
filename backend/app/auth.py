@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import Depends, HTTPException, Header, Request, Response
 from sqlalchemy.orm import Session
-from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS, JWT_ISSUER, JWT_AUDIENCE, HTTPS
 from app.database import get_db
 from app.models.user import User
 
@@ -16,13 +16,26 @@ AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 def create_token(user_id: int) -> str:
     payload = {
         "sub": str(user_id),
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def verify_token(token: str) -> dict:
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    return jwt.decode(
+        token,
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        options={
+            "verify_issuer": True,
+            "verify_audience": True,
+            "require": ["iss", "aud", "exp", "sub"]
+        },
+        issuer=JWT_ISSUER,
+        audience=JWT_AUDIENCE
+    )
 
 
 def get_token_from_cookie(request: Request) -> Optional[str]:
@@ -87,7 +100,7 @@ def set_auth_cookie(response: Response, token: str) -> Response:
         max_age=AUTH_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",  # lax allows cross-origin navigation
-        secure=False,  # Set to True in production with HTTPS
+        secure=HTTPS,  # Condicional según переменная окружения HTTPS
         path="/",
     )
     return response

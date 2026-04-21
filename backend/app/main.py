@@ -42,7 +42,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         # SEC-04: Strict-Transport-Security (only if HTTPS)
         # Note: Enable in production with proper HTTPS setup
-        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        from app.config import HTTPS
+        if HTTPS:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         
         # SEC-05: Referrer-Policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -86,17 +88,36 @@ class RateLimitHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RateLimitHeadersMiddleware)
 
+# CORS configuration - restrict to specific origins (needed by exception handlers)
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost,http://127.0.0.1,http://localhost:8000,http://127.0.0.1:8000").split(",")]
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}", exc_info=True)
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"detail": "Error interno del servidor"},
     )
+    origin = request.headers.get("origin")
+    if origin and origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
-# CORS configuration - restrict to specific origins
-ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost,http://127.0.0.1,http://localhost:8000,http://127.0.0.1:8000").split(",")]
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+    origin = request.headers.get("origin")
+    if origin and origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -160,15 +181,20 @@ async def startup_security_check():
         Base.metadata.create_all(bind=engine, tables=[PushSubscription.__table__])
         logger.info("Migration: created push_subscriptions table")
     
-    from app.config import JWT_SECRET
+    from app.config import JWT_SECRET, HTTPS
     
     logger.info("=" * 50)
     logger.info("SECURITY CONFIGURATION CHECK")
     logger.info("=" * 50)
     logger.info(f"JWT_SECRET length: {len(JWT_SECRET)} bytes (min: 32)")
+    logger.info(f"JWT_ISSUER: {os.getenv('JWT_ISSUER', 'agendazonal')}")
+    logger.info(f"JWT_AUDIENCE: {os.getenv('JWT_AUDIENCE', 'agendazonal-api')}")
     logger.info("SQLite WAL mode: enabled")
     logger.info("Rate limiting: enabled (slowapi)")
     logger.info("Security headers: enabled")
+    logger.info(f"HTTPS mode: {HTTPS}")
+    if HTTPS:
+        logger.info("HSTS: ENABLED (Strict-Transport-Security header active)")
     logger.info("=" * 50)
     logger.info("RECOMMENDED: Run Caddy for reverse proxy + static files:")
     logger.info("  .\\caddy\\caddy.exe run --config Caddyfile")

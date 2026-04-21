@@ -28,6 +28,11 @@ else:
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
+JWT_ISSUER = os.getenv("JWT_ISSUER", "agendazonal")
+JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "agendazonal-api")
+
+# HTTPS mode for production (enables secure cookies and HSTS)
+HTTPS = os.getenv("HTTPS", "false").lower() == "true"
 
 # ---------------------------------------------------------------------------
 # VAPID Keys for Web Push Notifications
