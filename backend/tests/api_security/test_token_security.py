@@ -6,7 +6,7 @@ import pytest
 import jwt as pyjwt
 from datetime import datetime, timedelta, timezone
 from tests.conftest import _bearer
-from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 
 
 class TestJWTAlgorithmConfusion:
@@ -107,7 +107,7 @@ class TestJWTTokenLeakage:
         token = r.json().get("token")
         
         if token:
-            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
             
             # Should not contain sensitive data
             sensitive_fields = ["password", "password_hash", "secret", "credit_card"]
@@ -319,6 +319,6 @@ class TestJWTReplayAttackPrevention:
         
         token = r.json().get("token")
         if token:
-            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
             # Should have jti for replay protection
             assert "jti" in decoded or True  # Depends on implementation

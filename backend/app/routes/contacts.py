@@ -22,7 +22,7 @@ from app.schemas.contact import (
     TransferOwnershipRequest,
     ScheduleEntry,
 )
-from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 from app.auth import get_current_user
 from app.geo import bounding_box, haversine_km, validate_coordinates
 from app.rate_limit import limiter
@@ -88,7 +88,14 @@ def get_current_user_optional(
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
             return None
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]},
+            issuer=JWT_ISSUER,
+            audience=JWT_AUDIENCE
+        )
         user_id_str = payload.get("sub")
         if not user_id_str:
             logging.debug("Optional auth: token missing 'sub' claim")
@@ -102,6 +109,9 @@ def get_current_user_optional(
         return None
     except (ValueError, AttributeError):
         logging.debug("Optional auth: malformed authorization header")
+        return None
+    except jwt.MissingRequiredClaimError as e:
+        logging.debug(f"Optional auth: missing required claim - {e}")
         return None
 
     user = db.query(User).filter(User.id == user_id).first()

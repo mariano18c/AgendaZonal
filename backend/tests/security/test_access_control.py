@@ -136,15 +136,20 @@ class TestPrivilegeEscalationAdvanced:
 
     def test_jwt_claim_manipulation_role(self, client, create_user):
         """Forging a JWT with role=admin claim should not work."""
+        from app.config import JWT_ISSUER, JWT_AUDIENCE
         user = create_user(username="jwt_hacker", email="jwt_hack@test.com", role="user")
         payload = {
             "sub": str(user.id),
-            "role": "admin",
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
+            "role": "admin",  # This is the fake claim being tested
             "exp": datetime.now(timezone.utc) + timedelta(hours=1),
         }
         token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
         headers = {"Authorization": f"Bearer {token}"}
         resp = client.get("/api/users", headers=headers)
+        # Should be 403 (Forbidden) because user role is not admin, not 401 (Unauthorized)
+        # The token is valid but doesn't grant admin privileges
         assert resp.status_code == 403
 
     def test_bootstrap_admin_replay(self, client, captcha):

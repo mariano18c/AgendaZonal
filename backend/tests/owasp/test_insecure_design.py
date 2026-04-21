@@ -3,7 +3,9 @@
 Tests for business logic flaws and insecure design patterns.
 """
 import pytest
+import jwt as pyjwt
 from tests.conftest import _bearer
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 
 
 class TestBusinessLogicFlaws:
@@ -253,10 +255,7 @@ class TestSecurityDesignFlaws:
         
         token = r.json().get("token")
         if token:
-            import jwt as pyjwt
-            from app.config import JWT_SECRET, JWT_ALGORITHM
-            
-            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
             exp = decoded.get("exp")
             
             # Should have reasonable timeout

@@ -1,5 +1,5 @@
 """OWASP A07: Identification and Authentication Failures tests.
-
+ 
 Tests for brute force protection, session management, credential stuffing,
 and other authentication-related vulnerabilities.
 """
@@ -7,7 +7,7 @@ import pytest
 import jwt as pyjwt
 from datetime import datetime, timedelta, timezone
 from tests.conftest import _bearer
-from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 
 
 class TestBruteForceProtection:
@@ -81,7 +81,7 @@ class TestSessionManagement:
         
         token = r.json().get("token")
         if token:
-            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
             exp = decoded.get("exp")
             assert exp is not None
             

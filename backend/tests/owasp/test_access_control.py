@@ -236,8 +236,12 @@ class TestBrokenAccessControlMitigation:
         token = r.json().get("token")
         if token:
             import jwt as pyjwt
-            from app.config import JWT_SECRET, JWT_ALGORITHM
-            decoded = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
+            decoded = pyjwt.decode(
+                token, JWT_SECRET, algorithms=[JWT_ALGORITHM],
+                options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]},
+                issuer=JWT_ISSUER, audience=JWT_AUDIENCE
+            )
             assert "exp" in decoded
             assert decoded["exp"] > 0
 

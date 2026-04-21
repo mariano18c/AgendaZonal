@@ -3,7 +3,7 @@ import pytest
 import jwt as pyjwt
 from datetime import datetime, timedelta, timezone
 from app.auth import create_token, verify_token
-from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 
 
 class TestCreateToken:
@@ -13,12 +13,12 @@ class TestCreateToken:
 
     def test_decodable(self):
         t = create_token(42)
-        payload = pyjwt.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = pyjwt.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
         assert payload["sub"] == "42"
 
     def test_has_expiration(self):
         t = create_token(1)
-        payload = pyjwt.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = pyjwt.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_issuer": True, "verify_audience": True, "require": ["iss", "aud", "exp", "sub"]}, issuer=JWT_ISSUER, audience=JWT_AUDIENCE)
         assert "exp" in payload
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         assert exp > datetime.now(timezone.utc)
@@ -35,7 +35,7 @@ class TestVerifyToken:
 
     def test_expired_raises(self):
         t = pyjwt.encode(
-            {"sub": "1", "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
+            {"sub": "1", "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
             JWT_SECRET, algorithm=JWT_ALGORITHM,
         )
         with pytest.raises(pyjwt.ExpiredSignatureError):

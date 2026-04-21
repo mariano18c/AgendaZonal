@@ -1,5 +1,5 @@
 """Robustness tests — SQLite contention, JWT edge cases, upload validation, special chars, error handling.
-
+ 
 Adapted from tests_ant/robustness/test_robustness_complete.py — uses current conftest fixtures.
 Covers:
 - SQLite contention (concurrent reads, concurrent writes, rapid create-delete, WAL mode, FK enforced)
@@ -8,13 +8,12 @@ Covers:
 - Special characters (SQL keywords, HTML in all fields, emoji, zero-width, RTL, control chars, long unicode)
 - Error handling (malformed JSON, empty body, wrong content type, global error handler, 404 JSON)
 """
-import io
-import threading
-import time
-import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import pytest
+import jwt as pyjwt
+import threading
+import uuid
+from datetime import datetime, timedelta, timezone
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 from PIL import Image
 
 
@@ -158,7 +157,7 @@ class TestJWTEdgeCases:
 
         user = create_user(username=f"near_expiry_{_uid()}", email=f"near_expiry_{_uid()}@test.com")
         token = pyjwt.encode(
-            {"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(seconds=1)},
+            {"sub": str(user.id), "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "exp": datetime.now(timezone.utc) + timedelta(seconds=1)},
             JWT_SECRET, algorithm=JWT_ALGORITHM,
         )
         headers = {"Authorization": f"Bearer {token}"}
@@ -192,6 +191,8 @@ class TestJWTEdgeCases:
         token = pyjwt.encode(
             {
                 "sub": str(user.id),
+                "iss": JWT_ISSUER,
+                "aud": JWT_AUDIENCE,
                 "exp": datetime.now(timezone.utc) + timedelta(hours=1),
                 "role": "admin",
                 "custom": "data",

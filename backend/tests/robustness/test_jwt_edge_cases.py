@@ -2,7 +2,7 @@
 import pytest
 import jwt as pyjwt
 from datetime import datetime, timedelta, timezone
-from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
 
 
 class TestJWTEdgeCases:
@@ -38,7 +38,7 @@ class TestJWTEdgeCases:
     def test_future_dated_exp(self, client, create_user):
         """Token with far-future expiration should still work if valid."""
         user = create_user()
-        payload = {"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(days=365)}
+        payload = {"sub": str(user.id), "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "exp": datetime.now(timezone.utc) + timedelta(days=365)}
         token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
         headers = {"Authorization": f"Bearer {token}"}
         resp = client.get("/api/auth/me", headers=headers)

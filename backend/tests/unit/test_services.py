@@ -333,11 +333,11 @@ class TestGetCurrentUserOptional:
 
     @pytest.mark.unit
     def test_returns_user_when_valid_token(self, db_session, create_user):
-        from app.config import JWT_SECRET, JWT_ALGORITHM
+        from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER, JWT_AUDIENCE
         user = create_user(username=f"opt_{_uid()}", email=f"opt_{_uid()}@test.com")
 
         token = pyjwt.encode(
-            {"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+            {"sub": str(user.id), "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
             JWT_SECRET, algorithm=JWT_ALGORITHM,
         )
         result = get_current_user_optional(authorization=f"Bearer {token}", db=db_session)
