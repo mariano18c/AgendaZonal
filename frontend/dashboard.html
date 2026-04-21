@@ -118,11 +118,56 @@
       if (sort) params += `&sort=${sort}`;
       
       try {
+        // Fetch badges first (parallel with dashboard data)
+        const badgesData = await apiRequest('/api/provider/badges').catch(() => null);
+        
         const data = await apiRequest(`/api/provider/dashboard?${params}`);
         console.log('Dashboard data:', data);
         const { leads_this_month, leads_last_month, avg_rating, total_reviews, active_offers, contacts, total_contacts, leads_by_week, recent_reviews } = data;
         _allContacts = contacts || [];
+        
+        // Render badges section
+        let badgesHtml = '';
+        if (badgesData && badgesData.badges && badgesData.badges.length > 0) {
+          const earnedBadges = badgesData.badges.filter(b => b.is_earned);
+          const unearnedBadges = badgesData.badges.filter(b => !b.is_earned);
+          
+          const earnedBadgesHtml = earnedBadges.map(b => 
+            `<div class="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg">
+              <span class="text-xl">${b.icon}</span>
+              <div>
+                <div class="font-medium text-gray-800 text-sm">${escapeHtml(b.name)}</div>
+                <div class="text-xs text-gray-500">${escapeHtml(b.description)}</div>
+              </div>
+            </div>`
+          ).join('');
+          
+          const unearnedBadgesHtml = unearnedBadges.map(b => 
+            `<div class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg opacity-60">
+              <span class="text-xl grayscale">${b.icon}</span>
+              <div>
+                <div class="font-medium text-gray-600 text-sm">${escapeHtml(b.name)}</div>
+                <div class="text-xs text-gray-400">${escapeHtml(b.description)}</div>
+              </div>
+            </div>`
+          ).join('');
+          
+          badgesHtml = `
+            <div class="bg-white rounded-lg shadow-sm border p-4 mb-6">
+              <div class="flex justify-between items-center mb-3">
+                <h2 class="font-semibold text-gray-800">🏆 Mis Logros</h2>
+                <span class="text-sm text-gray-500">${badgesData.earned_count}/${badgesData.total_count} obtenidos</span>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                ${earnedBadgesHtml}
+                ${unearnedBadgesHtml}
+              </div>
+            </div>
+          `;
+        }
+        
         container.innerHTML = `
+          ${badgesHtml}
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-blue-600">${leads_this_month}</div><div class="text-sm text-gray-500">Leads este mes</div></div>
             <div class="bg-white rounded-lg shadow-sm border p-4 text-center"><div class="text-3xl font-bold text-green-600">${leads_last_month}</div><div class="text-sm text-gray-500">Leads mes anterior</div></div>

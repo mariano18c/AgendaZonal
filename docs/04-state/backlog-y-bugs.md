@@ -3,9 +3,9 @@
 ## Items Pendientes (Backlog)
 
 ### Alta Prioridad
-- **Frontend UI for Reporting**: Implementar el modal de reporte de contacto en `profile.html`.
-- **HSTS Enforcement**: Habilitar el header Strict-Transport-Security en producción (`main.py`).
-- **User Dashboard Badges**: Mostrar contador de notificaciones no leídas vía `/api/notifications/unread-count`.
+- **Frontend UI for Reporting**: ✅ Implementado en `admin-reports.html`.
+- **HSTS Enforcement**: ✅ Implementado en `main.py` (modo producción).
+- **User Dashboard Badges**: ✅ Implementado — sistema de insignias consultable vía `/api/provider/badges` (6 badges de logro).
 
 ### Media Prioridad
 - **vCard Export**: Implementar el endpoint `GET /api/contacts/{id}/export` para descargar ficha técnica.

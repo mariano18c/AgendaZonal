@@ -11,6 +11,8 @@ from app.models.offer import Offer
 from app.models.review import Review
 from app.models.user import User
 from app.auth import get_current_user
+from app.services.badge_service import calculate_user_badges
+from app.schemas.badge import BadgesResponse
 
 router = APIRouter(tags=["provider"])
 
@@ -177,3 +179,22 @@ def get_provider_dashboard(
         "leads_by_week": leads_by_week,
         "recent_reviews": review_list,
     }
+
+
+@router.get("/api/provider/badges", response_model=BadgesResponse)
+def get_provider_badges(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get all badges for the current user (provider).
+    
+    Returns a list of all available badges with their earned status.
+    """
+    badges = calculate_user_badges(db, user)
+    earned_count = sum(1 for b in badges if b.is_earned)
+    
+    return BadgesResponse(
+        badges=badges,
+        earned_count=earned_count,
+        total_count=len(badges),
+    )
