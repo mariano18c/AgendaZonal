@@ -33,3 +33,35 @@
     ├── environment.md          ← Configuración .env y Secretos
     ├── deployment-rpi5.md      ← Guía de Instalación y Caddy
     └── security/               ← Políticas, Caddyfile y Análisis
+
+---
+
+## Regla de Documentación
+
+**Todo cambio en código debe reflejar su documentación correspondiente.**
+
+### Cuándo actualizar docs
+
+| Tipo de cambio | Documentos a actualizar |
+|---------------|-------------------------|
+| Nueva feature | `01-product/` (user-stories), `03-technical/` (api-endpoints) |
+| Nuevo patrón backend | `02-architecture/conventions.md` |
+| Nuevo patrón frontend | `02-architecture/frontend-patterns.md` |
+| Nuevo error HTTP | `02-architecture/error-codes.md` |
+| Cambio en testing | `03-technical/testing-strategy.md` |
+| Cambio en deployment | `05-operations/deployment-rpi5.md` |
+
+### SDD y Documentación
+
+En el ciclo SDD:
+- **sdd-spec**: Define qué documentación se necesita
+- **sdd-tasks**: Incluye tareas de documentación
+- **sdd-verify**: Verifica que docs exista y esté completa
+- **sdd-archive**: Archiva cambios junto con documentos
+
+### Excepción
+
+No requiere documentación:
+- Refactors sin cambio de comportamiento
+- Bug fixes sin cambio observable
+- Cambios menores de estilo (sin impacto UX)
