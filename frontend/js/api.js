@@ -53,8 +53,22 @@ async function apiRequest(endpoint, options = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Error desconocido' }));
-    throw new Error(error.detail || 'Error en la petición');
+    let errorMessage = 'Error en la petición';
+    try {
+      const error = await response.json();
+      // Handle FastAPI/Pydantic validation errors (422)
+      if (Array.isArray(error.detail)) {
+        // Join all validation error messages
+        errorMessage = error.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+      } else if (typeof error.detail === 'string') {
+        errorMessage = error.detail;
+      } else if (error.detail) {
+        errorMessage = JSON.stringify(error.detail);
+      }
+    } catch (e) {
+      errorMessage = `Error ${response.status}: ${response.statusText}`;
+    }
+    throw new Error(errorMessage);
   }
 
   // B-03: Handle 204 No Content responses

@@ -291,10 +291,28 @@ function initEditMap(containerId, initialLat, initialLng, latFieldId = 'latitude
 
     let marker;
     if (initialLat && initialLng) {
-      marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+      marker = L.marker([initialLat, initialLng], { 
+        draggable: true,
+        title: 'Arrastrar para seleccionar ubicación',
+        alt: 'Marcador de ubicación arrastrable'
+      }).addTo(map);
     } else {
-      marker = L.marker([centerLat, centerLng], { draggable: true }).addTo(map);
+      marker = L.marker([centerLat, centerLng], { 
+        draggable: true,
+        title: 'Arrastrar para seleccionar ubicación',
+        alt: 'Marcador de ubicación arrastrable'
+      }).addTo(map);
     }
+    
+    // Accesibilidad: agregar aria-label y role
+    marker.on('add', () => {
+      const el = marker.getElement();
+      if (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', 'Marcador de ubicación. Arrastrar para mover o haga clic en el mapa para seleccionar.');
+      }
+    });
+    
     marker.bindPopup('📍 Arrastrar para mover');
 
     // Update fields when marker is dragged
