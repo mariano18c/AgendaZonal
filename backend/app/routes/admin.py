@@ -227,7 +227,7 @@ def resolve_report(
 
 @router.get("/api/admin/contacts")
 def list_admin_contacts(
-    status: str = Query("suspended", pattern="^(all|active|flagged|suspended)$"),
+    status: str = Query("pending", pattern="^(all|active|flagged|suspended|pending)$"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -250,8 +250,12 @@ def list_admin_contacts(
         result.append({
             "id": c.id,
             "name": c.name,
+            "phone": c.phone,
             "city": c.city,
             "status": c.status,
+            "category_id": c.category_id,
+            "description": c.description,
+            "photo_path": c.photo_path,
             "owner": owner.username if owner else "N/A",
             "created_at": c.created_at,
             "updated_at": c.updated_at,
@@ -263,7 +267,7 @@ def list_admin_contacts(
 @router.put("/api/admin/contacts/{contact_id}/status")
 def update_contact_status(
     contact_id: int,
-    new_status: str = Query(..., pattern="^(active|suspended|flagged)$"),
+    new_status: str = Query(..., pattern="^(active|suspended|flagged|pending)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

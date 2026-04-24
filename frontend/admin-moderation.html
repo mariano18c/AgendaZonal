@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moderación OCR - Agenda de la zona</title>
+    <link rel="stylesheet" href="/css/output.css">
+    <link rel="manifest" href="/manifest.json">
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+    <style>
+        .image-container {
+            max-height: 400px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f3f4f6;
+            border-radius: 0.5rem;
+            position: relative;
+            cursor: pointer;
+        }
+        .image-container img {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        .zoom-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .image-container:hover .zoom-overlay {
+            opacity: 1;
+        }
+        .zoom-text {
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+            <div id="navbar"></div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <div id="breadcrumbs"></div>
+
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">Moderación de Ingesta (OCR)</h1>
+                <p class="text-gray-600">Revisión de contactos pendientes extraídos automáticamente.</p>
+            </div>
+            <button onclick="loadPendingContacts()" class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium transition flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Actualizar
+            </button>
+        </div>
+
+        <div id="loginRequired" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+            <p class="text-yellow-800 mb-4">Necesitás ser administrador o moderador para acceder.</p>
+            <a href="/login" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Iniciar sesión</a>
+        </div>
+
+        <div id="content" class="hidden">
+            <div id="loadingMsg" class="text-center text-gray-500 py-10">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+                <p>Cargando contactos pendientes...</p>
+            </div>
+
+            <div id="noPending" class="hidden text-center bg-white border rounded-lg py-12">
+                <svg class="w-16 h-16 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <h3 class="text-xl font-medium text-gray-900 mb-2">¡Todo al día!</h3>
+                <p class="text-gray-500">No hay contactos pendientes de moderación.</p>
+            </div>
+
+            <div id="contactsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+            
+            <div id="pagination" class="mt-8 flex justify-center"></div>
+        </div>
+    </main>
+
+    <script>
+        let categories = [];
+        
+        async function fetchCategories() {
+            try {
+                const res = await fetch('/api/categories');
+                if (res.ok) {
+                    const data = await res.json();
+                    categories = Array.isArray(data) ? data : data.categories || [];
+                }
+            } catch (e) {
+                console.error("Error loading categories", e);
+            }
+        }
+
+        async function init() {
+            try {
+                console.log("init() started");
+                const user = getUser();
+                console.log("User:", user);
+                const userRole = user ? user.role : null;
+                console.log("User Role:", userRole);
+                
+                if (!isLoggedIn() || (userRole !== 'admin' && userRole !== 'moderator')) {
+                    console.log("Not logged in or not admin/moderator. Showing loginRequired.");
+                    document.getElementById('loginRequired').classList.remove('hidden');
+                    return;
+                }
+                
+                console.log("User is admin. Unhiding content.");
+                document.getElementById('content').classList.remove('hidden');
+                
+                console.log("Fetching categories...");
+                await fetchCategories();
+                console.log("Categories fetched:", categories.length);
+                
+                console.log("Loading pending contacts...");
+                loadPendingContacts(1);
+            } catch (err) {
+                console.error("Error in init():", err);
+                document.getElementById('content').classList.remove('hidden');
+                document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500 font-bold">Error interno de inicialización: ${err.message}</p>`;
+            }
+        }
+
+        async function loadPendingContacts(page = 1) {
+            document.getElementById('loadingMsg').classList.remove('hidden');
+            document.getElementById('contactsGrid').innerHTML = '';
+            document.getElementById('noPending').classList.add('hidden');
+            document.getElementById('pagination').innerHTML = '';
+
+            const skip = (page - 1) * 10;
+            const token = localStorage.getItem('token');
+            
+            try {
+                console.log(`Fetching from /api/admin/contacts?status=pending&skip=${skip}&limit=10`);
+                const res = await fetch(`/api/admin/contacts?status=pending&skip=${skip}&limit=10`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                console.log("Response status:", res.status);
+                if (!res.ok) throw new Error(`Error al cargar contactos: HTTP ${res.status}`);
+                
+                const data = await res.json();
+                console.log("Data received:", data);
+                document.getElementById('loadingMsg').classList.add('hidden');
+                
+                if (data.contacts.length === 0) {
+                    document.getElementById('noPending').classList.remove('hidden');
+                    return;
+                }
+                
+                renderContacts(data.contacts);
+                renderPagination('pagination', page, data.total, 10, loadPendingContacts);
+                console.log("Render complete");
+            } catch (err) {
+                console.error("Error in loadPendingContacts:", err);
+                document.getElementById('loadingMsg').innerHTML = `<p class="text-red-500 font-bold">Error en fetch: ${err.message}</p>`;
+            }
+        }
+
+        function renderContacts(contacts) {
+            const grid = document.getElementById('contactsGrid');
+            
+            let html = '';
+            for (const c of contacts) {
+                let isVcf = false;
+                let vcfName = '';
+                let vcfUrl = '';
+                
+                // Detectar si es un VCF a partir de la descripcion
+                if (c.description && c.description.includes('[vcf:')) {
+                    isVcf = true;
+                    const match = c.description.match(/\[vcf:(.*?)\]/);
+                    if (match && match[1]) {
+                        vcfName = match[1];
+                        vcfUrl = `/vcfs/${encodeURIComponent(vcfName)}`;
+                    }
+                }
+
+                const imageSrc = c.photo_path && c.photo_path.startsWith('IMG-') 
+                    ? `/importados/${c.photo_path}` 
+                    : (c.photo_path ? `/uploads/${c.photo_path}` : '/icons/icon-192.png');
+                
+                let catOptions = categories.map(cat => 
+                    `<option value="${cat.id}" ${cat.id === c.category_id ? 'selected' : ''}>${cat.name}</option>`
+                ).join('');
+
+                let mediaHtml = '';
+                if (isVcf) {
+                    mediaHtml = `
+                    <div class="bg-gray-100 flex flex-col items-center justify-center py-8 border-b border-gray-200">
+                        <svg class="w-16 h-16 text-blue-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"></path></svg>
+                        <span class="font-medium text-gray-700 mb-3 block text-center px-4">Contacto VCF (vCard)</span>
+                        <a href="${vcfUrl}" target="_blank" download class="inline-flex items-center gap-2 bg-white border border-blue-300 text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Descargar Archivo Original
+                        </a>
+                    </div>`;
+                } else {
+                    mediaHtml = `
+                    <div class="image-container border-b border-gray-200" onclick="window.open('${imageSrc}', '_blank')">
+                        <img src="${imageSrc}" alt="Volante de ${c.name}" loading="lazy" onerror="this.src='/icons/icon-192.png'">
+                        <div class="zoom-overlay">
+                            <span class="zoom-text">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg>
+                                Ampliar Imagen
+                            </span>
+                        </div>
+                    </div>`;
+                }
+
+                html += `
+                <div class="bg-white rounded-lg shadow-md border overflow-hidden flex flex-col hover:shadow-lg transition-shadow" id="card-${c.id}">
+                    ${mediaHtml}
+                    
+                    <div class="p-5 flex-grow">
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nombre Extraído</label>
+                            <input type="text" id="name-${c.id}" value="${c.name}" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Teléfono</label>
+                            <input type="text" id="phone-${c.id}" value="${c.phone || ''}" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Categoría Sugerida</label>
+                            <select id="category-${c.id}" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border">
+                                ${catOptions}
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Contexto (OCR Texto Bruto)</label>
+                            <p class="text-sm text-gray-600 bg-gray-50 p-3 rounded border italic">${c.description || 'Sin texto extraído'}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 px-5 py-4 border-t flex justify-between gap-3">
+                        <button onclick="rejectContact(${c.id})" class="flex-1 bg-white border border-red-300 text-red-600 hover:bg-red-50 py-2 rounded-lg font-medium transition">
+                            Rechazar
+                        </button>
+                        <button onclick="approveContact(${c.id})" class="flex-1 bg-green-600 text-white hover:bg-green-700 py-2 rounded-lg font-medium transition shadow-sm">
+                            Guardar y Aprobar
+                        </button>
+                    </div>
+                </div>
+                `;
+            }
+            grid.innerHTML = html;
+        }
+
+        async function approveContact(id) {
+            const btn = document.querySelector(`#card-${id} button.bg-green-600`);
+            btn.innerHTML = 'Procesando...';
+            btn.disabled = true;
+            
+            const name = document.getElementById(`name-${id}`).value.trim();
+            const phone = document.getElementById(`phone-${id}`).value.trim();
+            const category_id = parseInt(document.getElementById(`category-${id}`).value);
+            const token = localStorage.getItem('token');
+            
+            try {
+                // 1. Update details
+                const updateRes = await fetch(`/api/contacts/${id}`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ name, phone, category_id })
+                });
+                
+                if (!updateRes.ok) throw new Error('Error al actualizar datos');
+                
+                // 2. Change status to active
+                const statusRes = await fetch(`/api/admin/contacts/${id}/status?new_status=active`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!statusRes.ok) throw new Error('Error al cambiar estado');
+                
+                // Success, remove card
+                document.getElementById(`card-${id}`).remove();
+                
+                // If grid is empty, reload
+                if (document.getElementById('contactsGrid').children.length === 0) {
+                    loadPendingContacts();
+                }
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+                btn.innerHTML = 'Guardar y Aprobar';
+                btn.disabled = false;
+            }
+        }
+
+        async function rejectContact(id) {
+            if (!confirm('¿Estás seguro de que quieres rechazar y ocultar este contacto?')) return;
+            
+            const btn = document.querySelector(`#card-${id} button.text-red-600`);
+            btn.innerHTML = '...';
+            btn.disabled = true;
+            
+            const token = localStorage.getItem('token');
+            
+            try {
+                // Change status to suspended (soft delete)
+                const res = await fetch(`/api/admin/contacts/${id}/status?new_status=suspended`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) throw new Error('Error al rechazar');
+                
+                document.getElementById(`card-${id}`).remove();
+                if (document.getElementById('contactsGrid').children.length === 0) {
+                    loadPendingContacts();
+                }
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+                btn.innerHTML = 'Rechazar';
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById('breadcrumbs').innerHTML = renderBreadcrumbs([
+            {'label': 'Inicio', 'url': '/'}, 
+            {'label': 'Admin', 'url': '/admin-reports.html'},
+            {'label': 'Moderación OCR', 'url': null}
+        ]);
+        
+        init();
+    </script>
+</body>
+</html>

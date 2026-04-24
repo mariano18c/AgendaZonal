@@ -10,6 +10,7 @@ build/
 
 # Data imports
 data_import/
+fuente_datos/
 
 # Virtual environment
 backend/venv/
@@ -56,3 +57,4 @@ node_modules/
 .gga
 nul
 tasks_breadcrumbs.md
+backend/logs/watcher.log

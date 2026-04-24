@@ -14,11 +14,11 @@ def validate_url(value: str | None, field_name: str) -> str | None:
 
 
 def validate_phone(value: str | None) -> str | None:
-    """Validate phone contains only digits, spaces, dashes, parentheses"""
+    """Validate phone contains only digits, spaces, dashes, parentheses, and plus sign"""
     if value is None or value.strip() == '':
         return None
-    if not re.match(r'^[\d\s\-\(\)]+$', value):
-        raise ValueError('El teléfono solo puede contener números, espacios, guiones y paréntesis')
+    if not re.match(r'^[\d\s\-\(\)\+]+$', value):
+        raise ValueError('El teléfono solo puede contener números, espacios, guiones, paréntesis y el signo +')
     return value
 
 
@@ -77,7 +77,7 @@ class ContactCreate(BaseModel):
 
 class ContactUpdate(BaseModel):
     name: str | None = Field(None, min_length=2, max_length=100)
-    phone: str | None = Field(None, min_length=6, max_length=20)
+    phone: str | None = Field(None, min_length=3, max_length=20)
     email: EmailStr | None = None
     address: str | None = Field(None, max_length=255)
     city: str | None = Field(None, max_length=100)

@@ -1,0 +1,18 @@
+[Unit]
+Description=AgendaZonal Data Watcher - Ingesta automática de fuente_datos
+After=network.target
+
+[Service]
+# Ajustá estas rutas según donde esté instalado el proyecto en el RPi
+WorkingDirectory=/home/pi/AgendaZonal_Anti
+ExecStart=/home/pi/AgendaZonal_Anti/.venv/bin/python backend/scripts/watcher.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/pi/AgendaZonal_Anti/backend/logs/watcher.log
+StandardError=append:/home/pi/AgendaZonal_Anti/backend/logs/watcher.log
+# Usuario que corre el servicio (mismo que corre el backend)
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target

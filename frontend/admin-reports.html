@@ -22,9 +22,10 @@
       <h1 class="text-2xl font-bold text-gray-800 mb-6">🚩 Administración de Contactos</h1>
 
     <!-- Tabs -->
-    <div class="flex gap-1 mb-6">
-      <button onclick="switchTab('reports')" id="tab-reports" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-blue-600">Reportes pendientes</button>
-      <button onclick="switchTab('contacts')" id="tab-contacts" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200">Contactos por estado</button>
+    <div class="flex gap-1 mb-6 overflow-x-auto">
+      <button onclick="switchTab('reports')" id="tab-reports" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-blue-600 whitespace-nowrap">Reportes pendientes</button>
+      <button onclick="switchTab('contacts')" id="tab-contacts" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">Contactos por estado</button>
+      <a href="/admin/moderation" class="px-4 py-2 rounded-t-lg font-medium text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 whitespace-nowrap">Moderación OCR (Pendientes)</a>
     </div>
 
     <!-- Tab: Reportes pendientes -->

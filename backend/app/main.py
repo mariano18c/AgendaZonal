@@ -205,6 +205,8 @@ async def startup_security_check():
 # Serve frontend
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 UPLOADS_DIR = Path(__file__).resolve().parent.parent.parent / "backend" / "uploads"
+IMPORTED_IMAGES_DIR = Path(__file__).resolve().parent.parent.parent / "fuente_datos" / "importados_ok" / "imagenes"
+VCF_DIR = Path(__file__).resolve().parent.parent.parent / "fuente_datos" / "importados_ok" / "vcf"
 
 
 def serve_html(filename: str):
@@ -295,6 +297,10 @@ def admin_reports_page():
 @app.get("/admin/utilities")
 def admin_utilities_page():
     return serve_html("admin-utilities.html")
+
+@app.get("/admin/moderation")
+def admin_moderation_page():
+    return serve_html("admin-moderation.html")
 
 # PWA static files
 @app.get("/sw.js")
@@ -405,3 +411,9 @@ if FRONTEND_DIR.exists():
 
 if UPLOADS_DIR.exists():
     app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+
+if IMPORTED_IMAGES_DIR.exists():
+    app.mount("/importados", StaticFiles(directory=str(IMPORTED_IMAGES_DIR)), name="importados")
+
+if VCF_DIR.exists():
+    app.mount("/vcfs", StaticFiles(directory=str(VCF_DIR)), name="vcfs")
