@@ -11,7 +11,7 @@
 - **Documentation Overhaul**: Sincronización completa de `/docs` con la realidad del código (`backend/app/...`).
 - **Database Schema**: Actualizado para reflejar las 14 tablas del sistema actual.
 - **API Catalog**: Redefinición completa de endpoints de moderación, búsqueda y administración.
-- **Design System**: Migración a estética "Premium" con tokens HSL y glassmorphism.
+- **Design System**: Migración completa a estética "Premium" con tokens HSL y glassmorphism (v1.2.1).
 
 ### Fixed
 - Inconsistencias de rutas en `directory-structure.md`.

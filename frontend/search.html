@@ -15,10 +15,10 @@
     .search-tab { transition: all 0.2s; }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <nav class="bg-white shadow-sm border-b">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+<body class="bg-gray-50 dark:bg-gray-950 text-[var(--text-main)] min-h-screen transition-colors duration-300">
+  <nav class="glass-bg sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <a href="/" class="text-2xl font-black text-primary-hsl tracking-tight">📋 Agenda<span class="font-light">Zonal</span></a>
       <div id="navbar"></div>
     </div>
   </nav>
@@ -40,7 +40,7 @@
         </div>
         <button
           onclick="doSearch()"
-          class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium flex items-center gap-2"
+          class="primary-btn shadow-lg shadow-blue-500/20 px-8 flex items-center gap-2"
         >
           🔍 Buscar
         </button>
@@ -538,16 +538,16 @@ async function searchByCategory(categoryId, page = 1) {
           
           return `
             <a href="/profile?id=${c.id}"
-               class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
-              <div class="flex items-center gap-2">
-                <span class="font-semibold text-gray-800">${s(c.name)}</span>
+               class="bg-[var(--surface-card)] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 hover:shadow-md transition-all hover:scale-[1.02] duration-300 group">
+              <div class="flex items-center gap-2 justify-between">
+                <span class="font-bold text-gray-800 dark:text-gray-100 group-hover:text-primary-hsl transition-colors">${s(c.name)}</span>
                 ${badgeHtml}
               </div>
-              <div class="text-blue-600 mt-1">📞 ${s(c.phone)}</div>
-              ${cat ? `<div class="text-sm text-gray-500 mt-1">${getCategoryEmoji(cat.code)} ${s(cat.name)}</div>` : ''}
-              ${c.city ? `<div class="text-gray-500 text-sm mt-1">📍 ${s(c.city)}${c.neighborhood ? ' - ' + s(c.neighborhood) : ''}</div>` : ''}
-              ${c.distance_km != null ? `<div class="text-green-600 text-sm mt-1">📏 ${c.distance_km} km</div>` : ''}
-              ${c.description ? `<div class="text-gray-400 text-sm mt-2 line-clamp-2">${s(c.description)}</div>` : ''}
+              <div class="text-primary-hsl mt-2 font-bold tracking-tight">📞 ${s(c.phone)}</div>
+              ${cat ? `<div class="text-sm text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1.5">${getCategoryEmoji(cat.code)} ${s(cat.name)}</div>` : ''}
+              ${c.city ? `<div class="text-gray-500 dark:text-gray-400 text-sm mt-1.5 flex items-center gap-1.5"><span>📍</span> ${s(c.city)}${c.neighborhood ? ' - ' + s(c.neighborhood) : ''}</div>` : ''}
+              ${c.distance_km != null ? `<div class="text-green-600 dark:text-green-400 text-sm mt-1.5 font-bold flex items-center gap-1.5"><span>📏</span> ${c.distance_km} km</div>` : ''}
+              ${c.description ? `<div class="text-gray-400 dark:text-gray-500 text-xs mt-3 line-clamp-2 border-t border-gray-50 dark:border-gray-800/50 pt-2">${s(c.description)}</div>` : ''}
             </a>
           `;
         }).join('');

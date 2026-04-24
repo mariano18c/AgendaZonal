@@ -30,7 +30,7 @@ async function updateNavbar() {
   if (!navbar) return;
 
   const isDark = document.documentElement.classList.contains('dark');
-  const themeToggle = `<button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="${isDark ? 'Modo claro' : 'Modo oscuro'}">${isDark ? '☀️' : '🌙'}</button>`;
+  const themeToggle = `<button onclick="toggleTheme()" class="p-2 rounded-xl glass-bg hover:scale-105 active:scale-95 transition-all duration-300" title="${isDark ? 'Modo claro' : 'Modo oscuro'}">${isDark ? '☀️' : '🌙'}</button>`;
 
   const isLoggedIn = !!localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -40,49 +40,42 @@ async function updateNavbar() {
     try {
       const data = await apiRequest('/api/notifications/unread-count');
       if (data && data.unread_count > 0) {
-        unreadHtml = `<span class="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 translate-y-[-2px]">${data.unread_count}</span>`;
+        unreadHtml = `<span class="bg-danger-vibrant text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 translate-y-[-2px] shadow-sm animate-pulse">${data.unread_count}</span>`;
       }
-    } catch(e) {
-      // Ignorar errores silenciosamente si expira el token
-    }
-    let adminLink = '';
+    } catch(e) {}
     
-    // Admin/moderator links
+    let adminLink = '';
     if (user.role === 'admin' || user.role === 'moderator') {
       adminLink = `
-        <a href="/pending" class="text-yellow-600 hover:text-yellow-800">⏳ Pendientes</a>
-        <a href="/dashboard" class="text-gray-600 hover:text-gray-800 flex items-center">📊 Dashboard${unreadHtml}</a>
-        <a href="/admin/reviews" class="text-gray-600 hover:text-gray-800">⭐ Reseñas</a>
-        <a href="/admin/reports" class="text-gray-600 hover:text-gray-800">🚩 Reportes</a>
-        <a href="/admin/analytics" class="text-gray-600 hover:text-gray-800">📊 Analytics</a>
-        <a href="/admin/utilities" class="text-gray-600 hover:text-gray-800">🏥 Teléfonos</a>
-        ${user.role === 'admin' ? `<a href="/admin/users" class="text-gray-600 hover:text-gray-800">👥 Usuarios</a>` : ''}
+        <a href="/pending" class="text-amber-600 hover:text-amber-700 font-medium">⏳ Pendientes</a>
+        <a href="/dashboard" class="text-gray-600 dark:text-gray-300 hover:text-primary-hsl flex items-center font-medium transition">📊 Dashboard${unreadHtml}</a>
+        <a href="/admin/utilities" class="text-gray-600 dark:text-gray-300 hover:text-primary-hsl transition font-medium">🏥 Teléfonos</a>
+        ${user.role === 'admin' ? `<a href="/admin/users" class="text-gray-600 dark:text-gray-300 hover:text-primary-hsl transition font-medium">👥 Usuarios</a>` : ''}
       `;
     } else {
-      adminLink = `<a href="/dashboard" class="text-gray-600 hover:text-gray-800 flex items-center">📊 Dashboard${unreadHtml}</a>`;
+      adminLink = `<a href="/dashboard" class="text-gray-600 dark:text-gray-300 hover:text-primary-hsl flex items-center font-medium transition">📊 Dashboard${unreadHtml}</a>`;
     }
     
     const pushBtnHtml = ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied')
-      ? `<button id="pwaPushBtn" onclick="handleManualPushSubscription()" class="text-purple-600 hover:text-purple-800 transition text-sm font-medium" title="Activar notificaciones">🔔 Notificaciones</button>`
+      ? `<button id="pwaPushBtn" onclick="handleManualPushSubscription()" class="text-primary-hsl hover:underline transition text-sm font-semibold" title="Activar notificaciones">🔔 Notificaciones</button>`
       : '';
 
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
         ${themeToggle}
-        <span class="text-gray-700 dark:text-gray-200">Hola, ${user.username}</span>
-        <a href="/contact-form?mode=add" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Agregar</a>
+        <span class="text-gray-700 dark:text-gray-200 font-medium">Hola, ${user.username}</span>
+        <a href="/contact-form?mode=add" class="primary-btn">Agregar</a>
         ${adminLink}
         ${pushBtnHtml}
-        <button id="pwaInstallBtn" class="hidden text-green-600 hover:text-green-800" title="Instalar app">📲 Instalar</button>
-        <button onclick="logout()" class="text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100">Salir</button>
+        <button onclick="logout()" class="text-gray-500 hover:text-danger-vibrant dark:text-gray-400 transition-colors font-medium">Salir</button>
       </div>
     `;
   } else {
     navbar.innerHTML = `
       <div class="flex items-center gap-4">
         ${themeToggle}
-        <a href="/login" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">Iniciar sesión</a>
-        <a href="/register" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Registrarse</a>
+        <a href="/login" class="text-primary-hsl hover:underline dark:text-blue-400 font-semibold transition">Iniciar sesión</a>
+        <a href="/register" class="primary-btn shadow-md shadow-blue-500/20">Registrarse</a>
       </div>
     `;
   }
@@ -588,23 +581,23 @@ function renderCard(options = {}) {
   
   let actionsHtml = '';
   if (actions && actions.length > 0) {
-    actionsHtml = '<div class="flex flex-wrap gap-2 mt-3">';
+    actionsHtml = '<div class="flex flex-wrap gap-2 mt-4">';
     actions.forEach(action => {
       if (action && action.label) {
         const clickHandler = typeof action.onClick === 'function'
           ? `onclick="(${action.onClick.toString()})()"`
           : action.onClick || '';
-        actionsHtml += `<button ${clickHandler} class="text-sm px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 transition">${action.label}</button>`;
+        actionsHtml += `<button ${clickHandler} class="text-xs px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-all font-medium text-gray-700 dark:text-gray-300">${action.label}</button>`;
       }
     });
     actionsHtml += '</div>';
   }
   
   return `
-    <div class="bg-white rounded-lg shadow p-4 border border-gray-100">
-      ${title ? `<h4 class="font-semibold text-gray-800 mb-2">${title}</h4>` : ''}
-      <p class="text-gray-600">${displayContent}</p>
-      ${showVerMas ? '<a href="#" class="text-blue-600 hover:text-blue-800 text-sm">Ver más</a>' : ''}
+    <div class="bg-[var(--surface-card)] rounded-2xl shadow-sm p-5 border border-gray-100 dark:border-gray-800 transition-all hover:shadow-md hover:scale-[1.01] duration-300">
+      ${title ? `<h4 class="font-bold text-gray-800 dark:text-gray-100 mb-2 text-lg">${title}</h4>` : ''}
+      <p class="text-gray-600 dark:text-gray-300 leading-relaxed">${displayContent}</p>
+      ${showVerMas ? '<a href="#" class="text-primary-hsl hover:underline text-sm font-medium mt-2 inline-block">Ver más</a>' : ''}
       ${actionsHtml}
     </div>
   `;

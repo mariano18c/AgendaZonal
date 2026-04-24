@@ -9,10 +9,10 @@
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <nav class="bg-white shadow-sm border-b">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+<body class="bg-gray-50 dark:bg-gray-950 text-[var(--text-main)] min-h-screen transition-colors duration-300">
+  <nav class="glass-bg sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <a href="/" class="text-2xl font-black text-primary-hsl tracking-tight">📋 Agenda<span class="font-light">Zonal</span></a>
       <div id="navbar"></div>
     </div>
   </nav>
@@ -40,7 +40,7 @@
         <div id="errorMsg" class="hidden text-red-600 text-sm text-center"></div>
 
         <button type="submit"
-          class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium">
+          class="primary-btn w-full shadow-lg shadow-blue-500/20 py-4 text-lg font-bold">
           Iniciar Sesión
         </button>
       </form>

@@ -73,10 +73,10 @@
     }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <nav class="bg-white shadow-sm border-b">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-      <a href="/" class="text-xl font-bold text-blue-600">📋 Agenda de la zona</a>
+<body class="bg-gray-50 dark:bg-gray-950 text-[var(--text-main)] min-h-screen transition-colors duration-300">
+  <nav class="glass-bg sticky top-0 z-50">
+    <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+      <a href="/" class="text-2xl font-black text-primary-hsl tracking-tight">📋 Agenda<span class="font-light">Zonal</span></a>
       <div id="navbar"></div>
     </div>
   </nav>
@@ -157,8 +157,8 @@
           whatsappHtml = `
             <a href="https://wa.me/${cleanPhone}?text=${waMsg}" target="_blank" rel="noopener"
                onclick="registerLead(${contact.id})"
-               class="inline-flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition font-medium">
-              💬 Contactar por WhatsApp
+               class="inline-flex items-center gap-3 bg-green-600 text-white px-8 py-4 rounded-2xl hover:bg-green-700 transition-all hover:scale-105 active:scale-95 font-bold shadow-lg shadow-green-500/20">
+              <span class="text-xl">💬</span> Contactar por WhatsApp
             </a>`;
         }
 
@@ -211,10 +211,12 @@
             </div>` : ''}
           </div>
 
-          <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
-            <div class="flex flex-wrap gap-3">
+          <div class="bg-[var(--surface-card)] rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 mb-6">
+            <div class="flex flex-wrap gap-4">
               ${whatsappHtml}
-              <a href="tel:${s(contact.phone)}" class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium">📞 Llamar</a>
+              <a href="tel:${s(contact.phone)}" class="inline-flex items-center gap-3 bg-primary-hsl text-white px-8 py-4 rounded-2xl hover:bg-blue-700 transition-all hover:scale-105 active:scale-95 font-bold shadow-lg shadow-blue-500/20">
+                <span class="text-xl">📞</span> Llamar ahora
+              </a>
             </div>
           </div>
 
