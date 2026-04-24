@@ -22,7 +22,7 @@ El proyecto se rige por un ciclo de vida asistido por IA:
 2. **Design**: Diseño arquitectónico previo a la codificación.
 3. **Apply**: Implementación atómica.
 4. **Verify**: Testeo automático (Pytest/Playwright).
-5. **Archive**: Documentación del cambio en el lifecycle.
+5. **Archive**: Documentación del cambio en el lifecycle. Cada vez que cierres esta tarea, usala para verificar y documentar las lecciones aprendidas.
 
 ## Objetivo del Agente
 Mantener la Agenda Zonal funcionando en hardware limitado sin sacrificar seguridad ni una estética premium.
